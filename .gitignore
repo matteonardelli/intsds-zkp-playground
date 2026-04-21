@@ -205,3 +205,28 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# Dependencies
+node_modules/
+.env
+*.log
+
+# Build outputs
+dist/
+build/
+*.o
+*.wasm
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+
+# NPM 
+node_modules/
+build/
