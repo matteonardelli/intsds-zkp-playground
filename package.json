@@ -1,0 +1,24 @@
+{
+  "name": "intsds-zkp-playground",
+  "version": "1.0.0",
+  "description": "Playground for ZKP and performance evaluation",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matteonardelli/intsds-zkp-playground.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/matteonardelli/intsds-zkp-playground/issues"
+  },
+  "homepage": "https://github.com/matteonardelli/intsds-zkp-playground#readme",
+  "dependencies": {
+    "circomlib": "^2.0.5"
+  }
+}
