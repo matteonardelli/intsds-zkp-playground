@@ -2,9 +2,13 @@
 """
 Benchmark harness for Circom + snarkjs experiments.
 
+Supports:
+- Groth16
+- PLONK
+
 What it does:
 - compiles Circom circuits
-- runs Groth16 setup (once per circuit)
+- runs setup (once per circuit)
 - generates witnesses
 - generates proofs
 - verifies proofs
@@ -47,6 +51,9 @@ RESULTS_DIR = PROJECT_ROOT / "results"
 PTAU_FILE = PROJECT_ROOT / "powersOfTau28_hez_final_12.ptau"
 CIRCOM_INCLUDE_DIR = PROJECT_ROOT / "node_modules"
 
+# Choose: "groth16" or "plonk"
+PROVING_SYSTEM = "groth16"
+
 # Number of repetitions for timing witness/prove/verify
 REPEATS = 5
 
@@ -70,6 +77,7 @@ class Experiment:
 class BenchmarkResult:
     experiment_name: str
     circuit_file: str
+    proving_system: str
     constraints: Optional[int]
     proof_size_bytes: Optional[int]
     public_size_bytes: Optional[int]
@@ -143,6 +151,9 @@ def check_dependencies() -> None:
         if shutil.which(tool) is None:
             raise EnvironmentError(f"Required tool not found in PATH: {tool}")
 
+    if PROVING_SYSTEM not in {"groth16", "plonk"}:
+        raise ValueError("PROVING_SYSTEM must be 'groth16' or 'plonk'")
+
     if not PTAU_FILE.exists():
         raise FileNotFoundError(
             f"PTAU file not found: {PTAU_FILE}\n"
@@ -159,7 +170,7 @@ def build_paths_for_experiment(exp: Experiment) -> Dict[str, Path]:
     Create stable paths for build artifacts associated with one experiment.
     """
     base_name = Path(exp.circuit_file).stem
-    exp_build_dir = BUILD_DIR / exp.name
+    exp_build_dir = BUILD_DIR / f"{exp.name}_{PROVING_SYSTEM}"
     ensure_dir(exp_build_dir)
 
     wasm_dir = exp_build_dir / f"{base_name}_js"
@@ -219,40 +230,50 @@ def compile_circuit(exp: Experiment, paths: Dict[str, Path]) -> float:
     return elapsed
 
 
-def setup_groth16(paths: Dict[str, Path]) -> float:
+def setup_prover(paths: Dict[str, Path]) -> float:
     """
-    Run Groth16 setup once per circuit.
+    Run Groth16 or PLONK setup.
     """
+
     if not FORCE_REBUILD and paths["zkey_final"].exists() and paths["vkey_json"].exists():
         return 0.0
-
-    # Phase 2 setup
+    
+    if PROVING_SYSTEM != "groth16" and PROVING_SYSTEM != "plonk":
+        raise ValueError(f"Unsupported proving system: {PROVING_SYSTEM}")
+        
+    zkey = str(paths["zkey_final"])
+    if PROVING_SYSTEM == "groth16":
+        zkey =  str(paths["zkey_0000"])
+        
     _, t_setup = timed_call(
         run_cmd,
         [
             "snarkjs",
-            "groth16",
+            PROVING_SYSTEM,
             "setup",
             str(paths["r1cs"]),
             str(PTAU_FILE),
-            str(paths["zkey_0000"]),
+            zkey,
         ],
     )
-
-    # Contribute deterministic entropy for reproducibility
-    # (fine for experiments; not for production trust assumptions)
-    _, t_contrib = timed_call(
-        run_cmd,
-        [
-            "snarkjs",
-            "zkey",
-            "contribute",
-            str(paths["zkey_0000"]),
-            str(paths["zkey_final"]),
-            "--name=bench_contrib",
-            "-e=benchmark_entropy",
-        ],
-    )
+     
+    t_contrib = 0
+    if PROVING_SYSTEM == "groth16":
+        # Phase 2 setup (only for Groth16)
+        # Contribute deterministic entropy for reproducibility
+        # (fine for experiments; not for production trust assumptions)
+        _, t_contrib = timed_call(
+            run_cmd,
+            [
+                "snarkjs",
+                "zkey",
+                "contribute",
+                str(paths["zkey_0000"]),
+                str(paths["zkey_final"]),
+                "--name=bench_contrib",
+                "-e=benchmark_entropy",
+            ],
+        )
 
     # Export verification key
     _, t_vkey = timed_call(
@@ -311,7 +332,7 @@ def generate_proof(paths: Dict[str, Path]) -> float:
     """
     cmd = [
         "snarkjs",
-        "groth16",
+        PROVING_SYSTEM,
         "prove",
         str(paths["zkey_final"]),
         str(paths["wtns"]),
@@ -328,7 +349,7 @@ def verify_proof(paths: Dict[str, Path]) -> (bool, float):
     """
     cmd = [
         "snarkjs",
-        "groth16",
+        PROVING_SYSTEM,
         "verify",
         str(paths["vkey_json"]),
         str(paths["public_json"]),
@@ -355,11 +376,11 @@ def benchmark_experiment(exp: Experiment) -> BenchmarkResult:
     """
     Run full benchmark for one experiment.
     """
-    print(f"\n=== Running experiment: {exp.name} ===")
+    print(f"\n=== Running experiment: {exp.name} [{PROVING_SYSTEM}] ===")
     paths = build_paths_for_experiment(exp)
 
     compile_time = compile_circuit(exp, paths)
-    setup_time = setup_groth16(paths)
+    setup_time = setup_prover(paths)
     constraints = get_constraint_count(paths)
 
     witness_times: List[float] = []
@@ -398,6 +419,7 @@ def benchmark_experiment(exp: Experiment) -> BenchmarkResult:
     return BenchmarkResult(
         experiment_name=exp.name,
         circuit_file=exp.circuit_file,
+        proving_system=PROVING_SYSTEM,
         constraints=constraints,
         proof_size_bytes=proof_size,
         public_size_bytes=public_size,
@@ -596,13 +618,14 @@ def main() -> int:
         except Exception as e:
             print(f"[FAIL] {exp.name}: {e}", file=sys.stderr)
 
-    output_csv = RESULTS_DIR / "bench_results.csv"
+    output_csv = RESULTS_DIR / f"bench_results_{PROVING_SYSTEM}.csv"
     save_results_csv(results, output_csv)
 
     print(f"\nSaved results to: {output_csv}")
     for r in results:
         print(
             f"- {r.experiment_name}: "
+            f"system={r.proving_system}, "
             f"constraints={r.constraints}, "
             f"witness={r.witness_time_s_mean:.4f}s, "
             f"prove={r.prove_time_s_mean:.4f}s, "
