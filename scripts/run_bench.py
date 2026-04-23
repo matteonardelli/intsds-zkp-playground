@@ -35,7 +35,7 @@ import sys
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
 from typing import Any, Dict, List, Optional
 
 
@@ -47,7 +47,7 @@ PROJECT_ROOT = Path(".").resolve()
 CIRCUITS_DIR = PROJECT_ROOT / "circuits"
 BUILD_DIR = PROJECT_ROOT / "build"
 RESULTS_DIR = PROJECT_ROOT / "results"
-PTAU_FILE = PROJECT_ROOT / "powersOfTau28_hez_final_12.ptau"
+PTAU_FILE = PROJECT_ROOT     / "powersOfTau28_hez_final_12.ptau"
 CIRCOM_INCLUDE_DIR = PROJECT_ROOT / "node_modules"
 
 # Choose: "groth16" or "plonk"
@@ -127,7 +127,7 @@ def timed_call(fn, *args, **kwargs):
     result = fn(*args, **kwargs)
     end = time.perf_counter()
     return result, end - start
-
+   
 
 def file_size_bytes(path: Path) -> Optional[int]:
     return path.stat().st_size if path.exists() else None
@@ -199,6 +199,7 @@ def compile_circuit(exp: Experiment, paths: Dict[str, Path]) -> float:
     """
     Compile the Circom circuit if needed.
     """
+  
     circuit_path = CIRCUITS_DIR / exp.circuit_file
     if not circuit_path.exists():
         raise FileNotFoundError(f"Circuit file not found: {circuit_path}")
@@ -424,9 +425,9 @@ def benchmark_experiment(exp: Experiment) -> BenchmarkResult:
         public_size_bytes=public_size,
         compile_time_s=compile_time,
         setup_time_s=setup_time,
-        witness_time_s_mean=mean(witness_times),
-        prove_time_s_mean=mean(prove_times),
-        verify_time_s_mean=mean(verify_times),
+        witness_time_s_mean=median(witness_times),
+        prove_time_s_mean=median(prove_times),
+        verify_time_s_mean=median(verify_times),
         verification_ok=verification_ok,
         tags_json=json.dumps(exp.tags, sort_keys=True),
     )
