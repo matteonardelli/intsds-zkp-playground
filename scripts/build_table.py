@@ -18,9 +18,12 @@ import pandas as pd
 
 
 RESULTS_DIR = Path("results")
-CSV_FILE = RESULTS_DIR / "bench_results.csv"
-OUTPUT_TEX = RESULTS_DIR / "bench_table.tex"
-OUTPUT_TXT = RESULTS_DIR / "bench_table.txt"
+GROTH16_CSV_FILE = RESULTS_DIR / "bench_results_groth16.csv"
+GROTH16_OUTPUT_TEX = RESULTS_DIR / "bench_table_groth16.tex"
+GROTH16_OUTPUT_TXT = RESULTS_DIR / "bench_table_groth16.txt"
+PLONK_CSV_FILE = RESULTS_DIR / "bench_results_plonk.csv"
+PLONK_OUTPUT_TEX = RESULTS_DIR / "bench_table_plonk.tex"
+PLONK_OUTPUT_TXT = RESULTS_DIR / "bench_table_plonk.txt"
 
 
 FAMILY_LABELS = {
@@ -130,23 +133,26 @@ def build_txt_table(df: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
+def build_table(csv_path: Path, output_txt: Path, output_tex: Path) -> None:
+    df = load_results(csv_path)
+
+    # TXT version 
+    txt_table = build_txt_table(df)
+    with open(output_txt, "w", encoding="utf-8") as f:
+        f.write(txt_table)
+    print(f"TXT table written to {output_txt.resolve()}")
+
+    # LaTeX version    
+    latex = build_latex_table(df)
+    with open(output_tex, "w", encoding="utf-8") as f:
+        f.write(latex)
+    print(f"LaTeX table written to {output_tex.resolve()}")
 
 def main() -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    df = load_results(CSV_FILE)
-
-    # TXT version 
-    txt_table = build_txt_table(df)
-    with open(OUTPUT_TXT, "w", encoding="utf-8") as f:
-        f.write(txt_table)
-    print(f"TXT table written to {OUTPUT_TXT.resolve()}")
-
-    # LaTeX version    
-    latex = build_latex_table(df)
-    with open(OUTPUT_TEX, "w", encoding="utf-8") as f:
-        f.write(latex)
-    print(f"LaTeX table written to {OUTPUT_TEX.resolve()}")
+    build_table(GROTH16_CSV_FILE, GROTH16_OUTPUT_TXT, GROTH16_OUTPUT_TXT)
+    build_table(PLONK_CSV_FILE, PLONK_OUTPUT_TXT, PLONK_OUTPUT_TXT)
 
 
 if __name__ == "__main__":
