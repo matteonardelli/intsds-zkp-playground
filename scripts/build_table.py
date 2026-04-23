@@ -151,8 +151,8 @@ def build_table(csv_path: Path, output_txt: Path, output_tex: Path) -> None:
 def main() -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    build_table(GROTH16_CSV_FILE, GROTH16_OUTPUT_TXT, GROTH16_OUTPUT_TXT)
-    build_table(PLONK_CSV_FILE, PLONK_OUTPUT_TXT, PLONK_OUTPUT_TXT)
+    build_table(GROTH16_CSV_FILE, GROTH16_OUTPUT_TXT, GROTH16_OUTPUT_TEX)
+    build_table(PLONK_CSV_FILE, PLONK_OUTPUT_TXT, PLONK_OUTPUT_TEX)
 
 
 if __name__ == "__main__":
