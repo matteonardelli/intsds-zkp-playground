@@ -21,7 +21,8 @@ import pandas as pd
 
 
 RESULTS_DIR = Path("results")
-CSV_FILE = RESULTS_DIR / "bench_results.csv"
+GROTH16_CSV_FILE = RESULTS_DIR / "bench_results_groth16.csv"
+PLONK_CSV_FILE = RESULTS_DIR / "bench_results_plonk.csv"
 
 
 def load_results(csv_path: Path) -> pd.DataFrame:
@@ -70,36 +71,44 @@ def make_metric_plot(
     plt.savefig(output_file)
     plt.close()
 
+def plot_if_exists(csv_path: Path, backend:str) -> None:
+    try:
+        df = load_results(csv_path)
 
+        # Constraints
+        make_metric_plot(
+            df=df,
+            metric_col="constraints",
+            ylabel="Number of constraints",
+            output_file=RESULTS_DIR / f"constraints_comparison_{backend}.pdf",
+        )
+
+        # Proving time
+        make_metric_plot(
+            df=df,
+            metric_col="prove_time_s_mean",
+            ylabel="Proving time (s)",
+            output_file=RESULTS_DIR / f"proving_time_comparison_{backend}.pdf",
+        )
+
+        # Verification time
+        make_metric_plot(
+            df=df,
+            metric_col="verify_time_s_mean",
+            ylabel="Verification time (s)",
+            output_file=RESULTS_DIR / f"verify_time_comparison_{backend}.pdf",
+        )
+    
+        print(f"Plots for {csv_path} saved in: {RESULTS_DIR.resolve()}")
+        
+    except:
+        print(f"Unable to generate plots for {csv_path}")
+     
+        
 def main() -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    df = load_results(CSV_FILE)
-
-    # Constraints
-    make_metric_plot(
-        df=df,
-        metric_col="constraints",
-        ylabel="Number of constraints",
-        output_file=RESULTS_DIR / "constraints_comparison.pdf",
-    )
-
-    # Proving time
-    make_metric_plot(
-        df=df,
-        metric_col="prove_time_s_mean",
-        ylabel="Proving time (s)",
-        output_file=RESULTS_DIR / "proving_time_comparison.pdf",
-    )
-
-    # Verification time
-    make_metric_plot(
-        df=df,
-        metric_col="verify_time_s_mean",
-        ylabel="Verification time (s)",
-        output_file=RESULTS_DIR / "verify_time_comparison.pdf",
-    )
-
-    print("Plots saved in:", RESULTS_DIR.resolve())
+    plot_if_exists(GROTH16_CSV_FILE, "groth16")
+    plot_if_exists(PLONK_CSV_FILE, "plonk")
 
 
 if __name__ == "__main__":
