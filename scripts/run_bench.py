@@ -35,8 +35,10 @@ import sys
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median, variance
 from typing import Any, Dict, List, Optional
+from math import sqrt
+from collections import defaultdict
 
 
 # =========================
@@ -85,6 +87,11 @@ class BenchmarkResult:
     witness_time_s_mean: float
     prove_time_s_mean: float
     verify_time_s_mean: float
+    prove_time_s_median: float
+    verify_time_s_median: float
+    prove_time_s_var: float
+    verify_time_s_var: float
+    verify_times_raw: List[float]
     verification_ok: bool
     tags_json: str
 
@@ -158,6 +165,39 @@ def check_dependencies() -> None:
             f"PTAU file not found: {PTAU_FILE}\n"
             "Download or place a powersOfTau file there."
         )
+
+def t_test_independent(a, b):
+    """
+    Independent two-sample t-test between lists a and b.
+    Returns the t statistic (no p-value).
+    """
+    n1, n2 = len(a), len(b)
+    mean1, mean2 = mean(a), mean(b)
+    var1, var2 = variance(a), variance(b)
+
+    se = sqrt(var1 / n1 + var2 / n2)
+    if se == 0:
+        return float("inf") if mean1 != mean2 else 0.0
+
+    return (mean1 - mean2) / se
+
+
+def t_test_model_vs_others(family: str, bits: int, verify_groups):
+    """
+    checks verify times of a model (family, bits)
+    vs all other models with the same bit-width.
+    """
+    target = verify_groups.get((family, bits), [])
+    others = []
+
+    for (fam, b), values in verify_groups.items():
+        if b == bits and fam != family:
+            others.extend(values)
+
+    if not target or not others:
+        return 0.0
+
+    return t_test_independent(target, others)
 
 
 # =========================
@@ -427,6 +467,11 @@ def benchmark_experiment(exp: Experiment) -> BenchmarkResult:
         witness_time_s_mean=mean(witness_times),
         prove_time_s_mean=mean(prove_times),
         verify_time_s_mean=mean(verify_times),
+        prove_time_s_median=median(prove_times),
+        verify_time_s_median=median(verify_times),
+        prove_time_s_var=variance(prove_times),
+        verify_time_s_var=variance(verify_times),
+        verify_times_raw=verify_times,
         verification_ok=verification_ok,
         tags_json=json.dumps(exp.tags, sort_keys=True),
     )
@@ -631,6 +676,29 @@ def main() -> int:
             f"verify={r.verify_time_s_mean:.4f}s, "
             f"ok={r.verification_ok}"
         )
+    verify_groups = defaultdict(list)
+
+    # Raggruppa i verify time per (family, bits)
+    for r in results:
+        tags = json.loads(r.tags_json)
+        family = tags["family"]
+        bits = tags["bits"]
+        verify_groups[(family, bits)].extend(r.verify_times_raw)
+
+    families = [
+        "sufficient_balance",
+        "cumulative_limit",
+        "balance_and_limit",
+        "balance_limit_and_conservation",
+    ]
+
+    print("\n=== T-test: modello vs media degli altri (per bit-width) ===")
+    for bits in (16, 32, 64):
+        print(f"\nBit-width = {bits}")
+        for fam in families:
+            t_stat = t_test_model_vs_others(fam, bits, verify_groups)
+            print(f"  {fam:30s} vs others: t = {t_stat:.4f}")
+
 
     return 0
 
