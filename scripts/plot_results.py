@@ -83,24 +83,54 @@ def plot_if_exists(csv_path: Path, backend:str) -> None:
             output_file=RESULTS_DIR / f"constraints_comparison_{backend}.pdf",
         )
 
-        # Proving time
+        # Proving time_mean
         make_metric_plot(
             df=df,
             metric_col="prove_time_s_mean",
             ylabel="Proving time (s)",
-            output_file=RESULTS_DIR / f"proving_time_comparison_{backend}.pdf",
+            output_file=RESULTS_DIR / f"proving_time_mean_comparison_{backend}.pdf",
         )
 
-        # Verification time
+        # Verification time_mean
         make_metric_plot(
             df=df,
             metric_col="verify_time_s_mean",
             ylabel="Verification time (s)",
-            output_file=RESULTS_DIR / f"verify_time_comparison_{backend}.pdf",
+            output_file=RESULTS_DIR / f"verify_time_mean_comparison_{backend}.pdf",
         )
-    
+        # Proving time_median
+        make_metric_plot(
+            df=df,
+            metric_col="prove_time_s_median",
+            ylabel="Proving time (s)",
+            output_file=RESULTS_DIR / f"proving_time_median_comparison_{backend}.pdf",
+        )
+
+        # Verification time_median
+        make_metric_plot(
+            df=df,
+            metric_col="verify_time_s_median",
+            ylabel="Verification time (s)",
+            output_file=RESULTS_DIR / f"verify_time_median_comparison_{backend}.pdf",
+        )
+
+        # Proving time_Variance
+        make_metric_plot(
+            df=df,
+            metric_col="prove_time_s_var",
+            ylabel="Proving time (s)",
+            output_file=RESULTS_DIR / f"proving_time_variance_comparison_{backend}.pdf",
+        )
+
+        # Verification time_Variance
+        make_metric_plot(
+            df=df,
+            metric_col="verify_time_s_var",
+            ylabel="Verification time (s)",
+            output_file=RESULTS_DIR / f"verify_time_variance_comparison_{backend}.pdf",
+        )
         print(f"Plots for {csv_path} saved in: {RESULTS_DIR.resolve()}")
-        
+         
     except:
         print(f"Unable to generate plots for {csv_path}")
      

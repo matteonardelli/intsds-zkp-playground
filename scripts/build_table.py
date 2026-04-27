@@ -64,7 +64,7 @@ def build_latex_table(df: pd.DataFrame) -> str:
     lines.append(r"\begin{tabular}{lrrrrr}")
     lines.append(r"\toprule")
     lines.append(
-        r"Policy & Bits & Constraints & Witness (s) & Prove (s) & Verify (s) \\"
+        r"Policy & Bits & Constraints & Witness (s) & Prove_mean (s) & Verify_mean (s) & Prove_median (s) & Verify_median (s) & Prove_variance (s) & Verify_variance (s) \\"
     )
     lines.append(r"\midrule")
 
@@ -73,11 +73,15 @@ def build_latex_table(df: pd.DataFrame) -> str:
         bits = int(row["bits"])
         constraints = int(row["constraints"]) if pd.notna(row["constraints"]) else "-"
         witness = format_float(row["witness_time_s_mean"])
-        prove = format_float(row["prove_time_s_mean"])
-        verify = format_float(row["verify_time_s_mean"])
+        prove_mean = format_float(row["prove_time_s_mean"])
+        verify_mean = format_float(row["verify_time_s_mean"])
+        prove_median = format_float(row["prove_time_s_median"])
+        verify_median = format_float(row["verify_time_s_median"])
+        prove_var = format_float(row["prove_time_s_var"])
+        verify_var = format_float(row["verify_time_s_var"])
 
         lines.append(
-            f"{policy} & {bits} & {constraints} & {witness} & {prove} & {verify} \\\\"
+            f"{policy} & {bits} & {constraints} & {witness} & {prove_mean} & {verify_mean} & {prove_median} & {verify_median} & {prove_var} & {verify_var}\\\\"
         )
 
     lines.append(r"\bottomrule")
@@ -97,7 +101,7 @@ def build_txt_table(df: pd.DataFrame) -> str:
 
     # Prepare rows
     rows = []
-    headers = ["Policy", "Bits", "Constraints", "Witness(s)", "Prove(s)", "Verify(s)"]
+    headers = ["Policy", "Bits", "Constraints", "Witness(s)", "Prove_mean(s)", "Verify_mean(s)", "Prove_median(s)", "Verify_median(s)", "Prove_variance(s)", "Verify_variance(s)"]
 
     for _, row in df.iterrows():
         rows.append([
@@ -107,6 +111,10 @@ def build_txt_table(df: pd.DataFrame) -> str:
             format_float(row["witness_time_s_mean"]),
             format_float(row["prove_time_s_mean"]),
             format_float(row["verify_time_s_mean"]),
+            format_float(row["prove_time_s_median"]),
+            format_float(row["verify_time_s_median"]),
+            format_float(row["prove_time_s_var"]),
+            format_float(row["verify_time_s_var"]),
         ])
 
     # Compute column widths
