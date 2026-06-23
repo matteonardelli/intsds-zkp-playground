@@ -1,42 +1,16 @@
 pragma circom 2.1.6;
+include "payment_policy_model.circom";
 
-include "circomlib/circuits/comparators.circom";
-
-/*
-  Proves both:
-    1) balance >= amount
-    2) spent_window + amount <= limit
-
-  Private inputs:
-    - balance
-    - spent_window
-  Public inputs:
-    - amount
-    - limit
-
-  Rationale:
-    Minimal realistic composition of a financial correctness constraint
-    and a regulatory policy constraint.
-*/
-
+/* Deprecated compatibility alias for pi_valid AND pi_limit. */
 template BalanceAndLimit(nBits) {
-    signal input balance;      // private
-    signal input spent_window; // private
-    signal input amount;       // public
-    signal input limit;        // public
+    signal input balance;
+    signal input spent_window;
+    signal input amount;
+    signal input limit;
 
-    signal total_spent;
-
-    total_spent <== spent_window + amount;
-
-    component enoughBalance = GreaterEqThan(nBits);
-    enoughBalance.in[0] <== balance;
-    enoughBalance.in[1] <== amount;
-
-    component withinLimit = GreaterEqThan(nBits);
-    withinLimit.in[0] <== limit;
-    withinLimit.in[1] <== total_spent;
-
-    enoughBalance.out === 1;
-    withinLimit.out === 1;
+    component policy = LocalValidityAndOperatingLimit(nBits);
+    policy.balance <== balance;
+    policy.spent_window <== spent_window;
+    policy.amount <== amount;
+    policy.window_limit <== limit;
 }

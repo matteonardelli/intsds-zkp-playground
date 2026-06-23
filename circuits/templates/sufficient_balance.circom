@@ -1,26 +1,12 @@
 pragma circom 2.1.6;
+include "payment_policy_model.circom";
 
-include "circomlib/circuits/comparators.circom";
-
-/*
-  Proves that balance >= amount.
-
-  Private inputs:
-    - balance
-  Public inputs:
-    - amount
-
-  Rationale:
-    Representative of a local correctness constraint in account-based systems.
-*/
-
+/* Deprecated compatibility alias for pi_valid. */
 template SufficientBalance(nBits) {
-    signal input balance;   // private
-    signal input amount;    // public
+    signal input balance;
+    signal input amount;
 
-    component geq = GreaterEqThan(nBits);
-    geq.in[0] <== balance;
-    geq.in[1] <== amount;
-
-    geq.out === 1;
+    component policy = LocalFinancialValidity(nBits);
+    policy.balance <== balance;
+    policy.amount <== amount;
 }

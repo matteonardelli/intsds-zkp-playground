@@ -1,33 +1,14 @@
 pragma circom 2.1.6;
+include "payment_policy_model.circom";
 
-include "circomlib/circuits/comparators.circom";
-
-/*
-  Proves that spent_window + amount <= limit.
-
-  Private inputs:
-    - spent_window
-  Public inputs:
-    - amount
-    - limit
-
-  Rationale:
-    Representative of cumulative regulatory constraints,
-    e.g., daily limits or anonymity budgets.
-*/
-
+/* Deprecated compatibility alias for pi_limit. */
 template CumulativeLimit(nBits) {
-    signal input spent_window; // private
-    signal input amount;       // public
-    signal input limit;        // public
+    signal input spent_window;
+    signal input amount;
+    signal input limit;
 
-    signal total_spent;
-
-    total_spent <== spent_window + amount;
-
-    component geq = GreaterEqThan(nBits);
-    geq.in[0] <== limit;
-    geq.in[1] <== total_spent;
-
-    geq.out === 1;
+    component policy = OperatingLimit(nBits);
+    policy.spent_window <== spent_window;
+    policy.amount <== amount;
+    policy.window_limit <== limit;
 }

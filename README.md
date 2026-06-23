@@ -1,115 +1,129 @@
-# ZKP-based Policy Enforcement in Payment Systems
+# ZKP Policy Kernels for Privacy-Preserving Payments
 
-This repository contains circuits and experimental scripts to evaluate the cost of enforcing payment policies using Zero-Knowledge Proofs (ZKPs).
+This repository contains Circom circuits aligned with the policy model used in
+the paper on ZKP-based policy enforcement for privacy-preserving payment
+systems.
 
-## Overview
+The code does **not** implement a complete payment system. It isolates the
+constraint-enforcement layer so that the cost of representative policy classes
+can later be evaluated individually and in composition.
 
-Modern privacy-preserving payment systems (e.g., Platypus, PEREDI, UTT) rely on ZKPs to enforce constraints such as:
+## Policy-model coverage
 
-- sufficient balance
-- transaction limits
-- cumulative spending limits
+The canonical circuits cover the policy classes selected for experimental
+analysis:
 
-Instead of implementing full systems, this project isolates representative policy constraints and evaluates their cost when encoded as ZKP circuits.
+- **Local financial validity** (`pi_valid`)
+- **Operating/regulatory limits** (`pi_limit`)
+- **Privacy/anonymity budgets** (`pi_budget`)
+- **State transition and value conservation** (`pi_trans`)
+- **Membership and nullifier correctness** (`pi_mem`)
 
-### Circuits
+The paper also models authorization/eligibility, audit/disclosure/tracing, and
+privacy-structure/unlinkability policies. These are deliberately not reduced to
+one generic circuit because their implementation is strongly protocol-specific.
 
-The repository includes the following circuits:
+See [`circuits/POLICY_MAPPING.md`](circuits/POLICY_MAPPING.md) for the exact
+mapping between policy predicates, wrappers, and public/private inputs.
 
-#### 1. Sufficient Balance
+## Canonical circuit families
 
-```
-balance >= amount
-```
-- Represents local correctness
-- Inspired by account-based systems (e.g., Platypus)
+### Individual policy classes
 
-#### 2. Cumulative Limit
-
-```
-spent_window + amount <= limit
-```
-
-- Represents regulatory constraints
-- Inspired by PEREDI / UTT
-
-
-#### 3. Balance + Limit (composed)
-
-```
-balance >= amount
-AND
-spent_window + amount <= limit
+```text
+circuits/local_financial_validity_{16,32,64}.circom
+circuits/operating_limit_{16,32,64}.circom
+circuits/privacy_budget_{16,32,64}.circom
+circuits/state_transition_and_conservation_{16,32,64}.circom
+circuits/merkle_membership_depth_{8,16,32}.circom
+circuits/nullifier_correctness_poseidon.circom
 ```
 
-- Minimal realistic combination of correctness + compliance
+### Policy composition
 
+```text
+circuits/local_validity_and_operating_limit_{16,32,64}.circom
+circuits/account_policy_core_{16,32,64}.circom
+circuits/account_policy_with_privacy_budget_{16,32,64}.circom
+circuits/token_policy_bundle_32_depth_{8,16,32}.circom
+```
 
-#### 4. Balance + Limit + Conservation
+All templates are defined in:
 
-- Adds state update consistency
-- Closer to full transaction logic
+```text
+circuits/templates/payment_policy_model.circom
+```
 
+## Design decisions
+
+### Private transaction values
+
+The canonical wrappers keep the transaction amount and financial state private.
+Only policy thresholds, Merkle roots, and nullifiers are public where required.
+This better matches the privacy-preserving setting described in the paper.
+
+These circuits are policy kernels. In a complete protocol, hidden amounts and
+balances must also be bound to transaction commitments, ciphertexts, account
+state, or token commitments. The benchmark intentionally isolates the policy
+predicate rather than reproducing the full protocol stack.
+
+### Unsigned-integer semantics
+
+Every financial value is explicitly range-constrained. Cumulative additions use
+an `(nBits + 1)`-bit intermediate, preventing overflow from changing the
+intended semantics inside the SNARK field.
+
+### Nullifiers
+
+The nullifier circuit proves correct derivation from a hidden asset secret. It
+does not prove global non-spentness by itself. A ledger or state-transition
+layer must reject a public nullifier that has already appeared.
+
+### Operating limits vs. anonymity budgets
+
+These classes are semantically different but can compile to the same arithmetic
+shape. Keeping both circuits supports the paper's distinction between policy
+semantics and low-level cost drivers.
+
+## Compatibility with the existing scripts
+
+The original circuit names are retained as compatibility wrappers:
+
+```text
+sufficient_balance_*
+cumulative_limit_*
+balance_and_limit_*
+balance_limit_and_conservation_*
+```
+
+They now route to the policy-model-aligned templates, so the existing benchmark
+script can still be used for preliminary checks. New evaluation scripts should
+use the canonical names and will be defined separately.
 
 ## Requirements
 
 - Python 3.9+
 - Node.js
-- circom
-- snarkjs
+- Circom 2.1.6 or compatible
+- SnarkJS
+- `circomlib`
 
-## Setup
-
-### circomlib
-After cloning the repository, in the root folder, run: 
+Install the JavaScript dependency from the repository root:
 
 ```bash
-npm install 
+npm install
 ```
 
-### Powers of Tau
-The `.ptau` file is already in the root folder of the project. If needed, you can download it from `https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_12.ptau` and place it in the project root.
+The existing scripts expect the Powers of Tau file at:
 
-
-
-## Usage and Experiment Running
-
-### 1. Run benchmarks
-
-```bash
-python scripts/run_bench.sh
-``` 
-
-For each circuit, this measures:
-
-* number of constraints
-* witness generation time
-* proving time
-* verification time
-* proof size
-
-This generates:
-
-* results/bench_results.csv which summarizes the experiments
-
-### 2. Generate tables
-
-```bash
-python scripts/build_table.py
+```text
+powersOfTau28_hez_final_12.ptau
 ```
 
-This generates: 
-* table in textual format (`.txt`)
-* table in LaTeX format (`.tex`)
+## Experimental scripts
 
-### 3. Generate plots
-
-```bash
-python scripts/plot_results.py
-```
-
-This produces:
-
-* constraints vs bit-width
-* proving time vs bit-width
-* verification time vs bit-width
+The scripts under `scripts/` implement the first policy-model campaign,
+including the 28 monolithic circuit configurations, sequential separate-proof
+baselines, deterministic Poseidon/Merkle inputs, raw per-run collection,
+summary statistics, figures, and IEEE-compatible LaTeX tables. See
+[`scripts/README.md`](scripts/README.md) for the workflow.

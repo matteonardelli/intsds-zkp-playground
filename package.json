@@ -1,24 +1,15 @@
 {
-  "name": "intsds-zkp-playground",
-  "version": "1.0.0",
-  "description": "Playground for ZKP and performance evaluation",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/matteonardelli/intsds-zkp-playground.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/matteonardelli/intsds-zkp-playground/issues"
-  },
-  "homepage": "https://github.com/matteonardelli/intsds-zkp-playground#readme",
+  "name": "zkp-policy-model-benchmarks",
+  "private": true,
+  "version": "0.2.0",
+  "description": "Circom policy kernels aligned with a policy model for privacy-preserving payment systems",
   "dependencies": {
-    "circomlib": "^2.0.5"
+    "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7"
+  },
+  "scripts": {
+    "generate-inputs": "node scripts/generate_inputs.js",
+    "campaign:smoke": "python3 scripts/run_bench.py --repeats 3 --warmups 1 --blocks 1 --no-separate",
+    "campaign:full": "python3 scripts/run_bench.py"
   }
 }
