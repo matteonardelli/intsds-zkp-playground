@@ -747,7 +747,7 @@ def main() -> int:
     for tool in ("node", "circom", "snarkjs"):
         require_tool(tool)
 
-    ptaU_file = project_root / "powersOfTau28_hez_final_12.ptau"
+    ptaU_file = project_root / "powersOfTau28_hez_final_15.ptau"
     if not ptaU_file.exists():
         raise FileNotFoundError(f"Powers of Tau file not found: {ptaU_file}")
 
