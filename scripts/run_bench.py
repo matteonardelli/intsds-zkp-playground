@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
-"""Run the first policy-model experimental campaign.
+"""Run the policy-kernel benchmark campaign from the unified manifest.
 
 The harness:
-- uses the matrix in experiment_manifest.py;
+- uses the single matrix in experiment_manifest.py;
+- supports core, extended, and complete paper campaign profiles;
 - generates deterministic valid inputs when needed;
 - compiles and sets up each unique circuit once;
 - performs shuffled warm-up and measured rounds;
 - records raw logical-run and component-run observations;
 - keeps compilation/setup costs separate from transaction-path costs;
-- supports monolithic circuits and sequential separate-proof baselines.
+- supports monolithic circuits and sequential separate-proof baselines;
+- enforces transaction-tag equality for security-consistent linked bundles.
 
-Default first-campaign configuration:
-    python scripts/run_bench.py
+Complete paper campaign:
+    python scripts/run_bench.py --campaign paper
+
+Focused extended composition campaign:
+    python scripts/run_bench.py --campaign extended
 
 Useful smoke test:
-    python scripts/run_bench.py --repeats 3 --warmups 1 --blocks 1 \
-        --families local_financial_validity
+    python scripts/run_bench.py --campaign extended --repeats 3 --warmups 1 \
+        --blocks 1 --force-rebuild
 """
 
 from __future__ import annotations
@@ -39,14 +44,15 @@ from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
 
 from experiment_manifest import (
+    CAMPAIGNS,
     DEFAULT_SEED,
     CircuitExperiment,
     ExperimentLike,
     SeparateProofBaseline,
-    all_run_experiments,
     circuit_index,
     filter_experiments,
     input_path,
+    logical_experiments,
 )
 
 
@@ -86,6 +92,8 @@ class ComponentRunResult:
     proof_size_bytes: Optional[int]
     public_size_bytes: Optional[int]
     verification_ok: bool
+    binding_ok: Optional[bool]
+    binding_value: str
     status: str
     error: str
 
@@ -109,6 +117,14 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(__file__).resolve().parents[1],
         help="Repository root (default: parent of scripts/).",
+    )
+    parser.add_argument(
+        "--campaign",
+        choices=CAMPAIGNS,
+        default="paper",
+        help=(
+            "Campaign profile: core (original matrix), extended (focused same-run RQ3 comparison), or paper (complete reproducibility run)."
+        ),
     )
     parser.add_argument(
         "--proving-system",
@@ -265,6 +281,7 @@ def write_environment_metadata(
     package_lock = project_root / "package-lock.json"
     metadata: dict[str, Any] = {
         "run_id": output_path.parent.name,
+        "campaign_profile": args.campaign,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "project_root": str(project_root),
         "git_commit": git_commit(project_root),
@@ -285,6 +302,11 @@ def write_environment_metadata(
         "blocks": args.blocks,
         "seed": args.seed,
         "separate_proof_baselines": not args.no_separate,
+        "binding_scheme": {
+            "hash": "Poseidon",
+            "bundle_rule": "all component proofs verify and expose the same tx_tag",
+            "applies_to": "experiments with binding_mode=tx_tag",
+        },
         "ptau_file": str(ptaU_file),
         "ptau_sha256": sha256_file(ptaU_file),
         "package_json_sha256": sha256_file(package_json)
@@ -488,6 +510,32 @@ def verification_succeeded(result: subprocess.CompletedProcess[str]) -> bool:
     return result.returncode == 0 and re.search(r"\bOK!?\b", output) is not None
 
 
+def public_signal_index(sym_path: Path, signal_name: str) -> int:
+    """Return the zero-based public.json position of a named main signal."""
+
+    for line in sym_path.read_text(encoding="utf-8").splitlines():
+        parts = line.split(",", 3)
+        if len(parts) == 4 and parts[3] == signal_name:
+            witness_index = int(parts[1])
+            if witness_index <= 0:
+                raise ValueError(
+                    f"{signal_name} is not a public/main signal in {sym_path}"
+                )
+            return witness_index - 1
+    raise ValueError(f"Could not locate {signal_name} in {sym_path}")
+
+
+def expected_binding_value(project_root: Path, spec: CircuitExperiment) -> str:
+    if not spec.binding_input_key:
+        return ""
+    payload = json.loads(input_path(project_root, spec.name).read_text(encoding="utf-8"))
+    if spec.binding_input_key not in payload:
+        raise KeyError(
+            f"Missing binding input {spec.binding_input_key!r} for {spec.name}"
+        )
+    return str(payload[spec.binding_input_key])
+
+
 def run_component(
     project_root: Path,
     prepared: PreparedCircuit,
@@ -537,9 +585,37 @@ def run_component(
                 cwd=project_root,
                 check=False,
             )
-            ok = verification_succeeded(verification)
-            status = "ok" if ok else "verification_failed"
-            error = "" if ok else (verification.stderr or verification.stdout)[-2000:]
+            cryptographic_ok = verification_succeeded(verification)
+
+            binding_ok: Optional[bool] = None
+            binding_value = ""
+            if prepared.spec.binding_signal:
+                signals = [
+                    str(value)
+                    for value in json.loads(public.read_text(encoding="utf-8"))
+                ]
+                index = public_signal_index(
+                    prepared.sym, prepared.spec.binding_signal
+                )
+                binding_value = signals[index] if index < len(signals) else ""
+                expected = expected_binding_value(project_root, prepared.spec)
+                binding_ok = binding_value == expected
+
+            component_ok = cryptographic_ok and binding_ok is not False
+            if component_ok:
+                status = "ok"
+                error = ""
+            elif not cryptographic_ok:
+                status = "verification_failed"
+                error = (verification.stderr or verification.stdout)[-2000:]
+            else:
+                status = "binding_output_mismatch"
+                error = (
+                    f"expected {prepared.spec.binding_input_key}="
+                    f"{expected_binding_value(project_root, prepared.spec)}, "
+                    f"observed {binding_value}"
+                )
+
             return ComponentRunResult(
                 witness_time_s=witness_time,
                 prove_time_s=prove_time,
@@ -547,7 +623,9 @@ def run_component(
                 total_online_time_s=witness_time + prove_time + verify_time,
                 proof_size_bytes=optional_size(proof),
                 public_size_bytes=optional_size(public),
-                verification_ok=ok,
+                verification_ok=cryptographic_ok,
+                binding_ok=binding_ok,
+                binding_value=binding_value,
                 status=status,
                 error=error,
             )
@@ -560,10 +638,11 @@ def run_component(
             proof_size_bytes=None,
             public_size_bytes=None,
             verification_ok=False,
+            binding_ok=False if prepared.spec.binding_signal else None,
+            binding_value="",
             status="execution_failed",
             error=str(exc)[-4000:],
         )
-
 
 def sum_optional(values: Iterable[Optional[float | int]]) -> Optional[float | int]:
     materialized = list(values)
@@ -582,6 +661,8 @@ def experiment_fields(row: ExperimentLike) -> dict[str, Any]:
         "bits": row.bits,
         "merkle_depth": row.merkle_depth,
         "composition_id": row.composition_id,
+        "comparison_group": row.comparison_group,
+        "binding_mode": row.binding_mode,
     }
 
 
@@ -609,12 +690,37 @@ def execute_logical_run(
         result = run_component(project_root, prepared[name], proving_system)
         component_results.append((name, result))
 
-    verification_ok = all(result.verification_ok for _, result in component_results)
+    proofs_ok = all(result.verification_ok for _, result in component_results)
+
+    bundle_check_time_s = 0.0
+    binding_ok: Optional[bool] = None
+    if logical.binding_mode == "tx_tag":
+        check_start = time.perf_counter()
+        values = [result.binding_value for _, result in component_results]
+        binding_ok = (
+            all(result.binding_ok is True for _, result in component_results)
+            and all(values)
+            and len(set(values)) == 1
+        )
+        bundle_check_time_s = time.perf_counter() - check_start
+
+    verification_ok = proofs_ok and binding_ok is not False
     status = "ok" if verification_ok else "failed"
     errors = " | ".join(
         f"{name}: {result.error}"
         for name, result in component_results
         if result.error
+    )
+    if proofs_ok and binding_ok is False:
+        errors = (errors + " | " if errors else "") + "bundle tx_tag mismatch"
+
+    component_total = sum_optional(
+        result.total_online_time_s for _, result in component_results
+    )
+    total_online = (
+        None
+        if component_total is None
+        else float(component_total) + bundle_check_time_s
     )
 
     base = {
@@ -641,15 +747,16 @@ def execute_logical_run(
         "verify_time_s": sum_optional(
             result.verify_time_s for _, result in component_results
         ),
-        "total_online_time_s": sum_optional(
-            result.total_online_time_s for _, result in component_results
-        ),
+        "bundle_check_time_s": bundle_check_time_s,
+        "total_online_time_s": total_online,
         "proof_size_bytes": sum_optional(
             result.proof_size_bytes for _, result in component_results
         ),
         "public_size_bytes": sum_optional(
             result.public_size_bytes for _, result in component_results
         ),
+        "proofs_ok": proofs_ok,
+        "binding_ok": binding_ok,
         "verification_ok": verification_ok,
         "status": status,
         "error": errors,
@@ -657,6 +764,8 @@ def execute_logical_run(
 
     component_rows: list[dict[str, Any]] = []
     for index, (name, result) in enumerate(component_results, start=1):
+        result_dict = asdict(result)
+        result_dict.pop("binding_value", None)
         component_rows.append(
             {
                 "campaign_run_id": campaign_run_id,
@@ -668,16 +777,17 @@ def execute_logical_run(
                 "parent_experiment": logical.name,
                 "parent_execution_mode": execution_mode,
                 "composition_id": logical.composition_id,
+                "comparison_group": logical.comparison_group,
+                "binding_mode": logical.binding_mode,
                 "component_index": index,
                 "component_name": name,
                 "component_family": prepared[name].spec.family,
                 "proving_system": proving_system,
-                **asdict(result),
+                **result_dict,
             }
         )
 
     return base, component_rows
-
 
 def write_artifacts_csv(
     output_path: Path, prepared: Sequence[PreparedCircuit], proving_system: str
@@ -752,7 +862,9 @@ def main() -> int:
         raise FileNotFoundError(f"Powers of Tau file not found: {ptaU_file}")
 
     selected = filter_experiments(
-        all_run_experiments(include_separate=not args.no_separate),
+        logical_experiments(
+            args.campaign, include_separate=not args.no_separate
+        ),
         names=args.experiments,
         families=args.families,
     )
@@ -769,7 +881,7 @@ def main() -> int:
 
     run_id = args.run_id or datetime.now(timezone.utc).strftime(
         "%Y%m%dT%H%M%SZ"
-    ) + f"_{args.proving_system}"
+    ) + f"_{args.campaign}_{args.proving_system}"
     output_dir = project_root / "results" / run_id
     output_dir.mkdir(parents=True, exist_ok=False)
 
@@ -781,7 +893,10 @@ def main() -> int:
         selected=selected,
     )
 
-    print(f"Preparing {len(required_specs)} unique circuits...")
+    print(
+        f"Campaign profile: {args.campaign}; preparing "
+        f"{len(required_specs)} unique circuits..."
+    )
     prepared_list: list[PreparedCircuit] = []
     for index, spec in enumerate(required_specs, start=1):
         print(f"  [{index}/{len(required_specs)}] {spec.name}")
@@ -816,6 +931,8 @@ def main() -> int:
         "bits",
         "merkle_depth",
         "composition_id",
+        "comparison_group",
+        "binding_mode",
         "execution_mode",
         "component_count",
         "component_names",
@@ -824,9 +941,12 @@ def main() -> int:
         "witness_time_s",
         "prove_time_s",
         "verify_time_s",
+        "bundle_check_time_s",
         "total_online_time_s",
         "proof_size_bytes",
         "public_size_bytes",
+        "proofs_ok",
+        "binding_ok",
         "verification_ok",
         "status",
         "error",
@@ -841,6 +961,8 @@ def main() -> int:
         "parent_experiment",
         "parent_execution_mode",
         "composition_id",
+        "comparison_group",
+        "binding_mode",
         "component_index",
         "component_name",
         "component_family",
@@ -852,6 +974,7 @@ def main() -> int:
         "proof_size_bytes",
         "public_size_bytes",
         "verification_ok",
+        "binding_ok",
         "status",
         "error",
     ]
@@ -926,7 +1049,7 @@ def main() -> int:
                             component_writer, component_stream, component_row
                         )
 
-    latest = project_root / "results" / "latest"
+    latest = project_root / "results" / f"latest_{args.campaign}"
     try:
         if latest.is_symlink() or latest.exists():
             if latest.is_dir() and not latest.is_symlink():

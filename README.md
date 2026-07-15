@@ -96,9 +96,9 @@ balance_and_limit_*
 balance_limit_and_conservation_*
 ```
 
-They now route to the policy-model-aligned templates, so the existing benchmark
-script can still be used for preliminary checks. New evaluation scripts should
-use the canonical names and will be defined separately.
+They now route to the policy-model-aligned templates. The complete core and
+extended experiments are defined in the single manifest
+`scripts/experiment_manifest.py`.
 
 ## Requirements
 
@@ -122,8 +122,7 @@ powersOfTau28_hez_final_15.ptau
 
 ## Experimental scripts
 
-The scripts under `scripts/` implement the first policy-model campaign,
-including the 28 monolithic circuit configurations, sequential separate-proof
-baselines, deterministic Poseidon/Merkle inputs, raw per-run collection,
-summary statistics, figures, and IEEE-compatible LaTeX tables. See
-[`scripts/README.md`](scripts/README.md) for the workflow.
+The scripts under `scripts/` use one experimental manifest and one benchmark
+runner for the complete paper campaign. The runner supports three profiles:
+`core`, `extended`, and `paper`. See [`UNIFIED_CAMPAIGN.md`](UNIFIED_CAMPAIGN.md)
+and [`scripts/README.md`](scripts/README.md) for exact commands.

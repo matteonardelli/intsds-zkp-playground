@@ -1,20 +1,22 @@
 # Experimental campaign scripts
 
-This directory implements the first experimental matrix associated with the
-paper's policy model.
+The complete experimental matrix is defined only in:
 
-## Matrix
+```text
+scripts/experiment_manifest.py
+```
 
-The campaign includes 28 monolithic circuit configurations:
+`run_bench.py`, `validate_circuits.py`, and `summarize_results.py` all import
+this manifest. There is no separate runner or manifest for the linked
+extension.
 
-- individual arithmetic policies at 16, 32, and 64 bits;
-- Merkle membership at depths 8, 16, and 32;
-- Poseidon nullifier correctness;
-- three account-policy compositions at 16, 32, and 64 bits;
-- a token-policy bundle at 32 bits and Merkle depths 8, 16, and 32.
+## Campaign profiles
 
-It also executes 12 logical separate-proof baselines for the composed policies.
-The single source of truth is `experiment_manifest.py`.
+- `core`: original individual kernels, monolithic compositions, and unbound
+  separate-proof lower bounds;
+- `extended`: the focused RQ3 campaign, rerunning the three representative
+  legacy variants together with their transaction-tag-linked counterparts;
+- `paper`: the complete core matrix plus the linked extension.
 
 ## Install
 
@@ -24,17 +26,14 @@ From the repository root:
 npm install
 ```
 
-Place the Powers of Tau file at:
+Place the only supported Powers of Tau file at:
 
 ```text
-powersOfTau28_hez_final_12.ptau
+powersOfTau28_hez_final_15.ptau
 ```
 
-The Python post-processing scripts additionally require:
-
-```bash
-python -m pip install pandas matplotlib
-```
+The post-processing scripts use only the Python standard library. Plot and
+LaTeX-table generation additionally require `pandas` and `matplotlib`.
 
 ## Generate deterministic inputs
 
@@ -42,81 +41,70 @@ python -m pip install pandas matplotlib
 node scripts/generate_inputs.js
 ```
 
-The runner invokes this command automatically if input files are missing.
-Large integers are stored as decimal strings.
+The same generator creates inputs for every campaign profile. The runner calls
+it automatically when required inputs are missing.
 
 ## Functional validation
 
-Before timing, run valid, boundary, and invalid witness checks:
-
 ```bash
-python scripts/validate_circuits.py
+python3 scripts/validate_circuits.py --campaign extended
+python3 scripts/validate_circuits.py --campaign paper
 ```
 
-The report is written to `results/functional_validation.csv`. Invalid cases
-are expected to fail witness generation and are not part of the performance
-dataset.
+The extended validation checks invalid tags, binding-only field mutations, and
+application-level tag equality across component proofs.
 
-## Smoke test
+## Intern: extended campaign only
 
-```bash
-python scripts/run_bench.py \
-  --repeats 3 --warmups 1 --blocks 1 \
-  --families local_financial_validity \
-  --no-separate
-```
-
-## First full campaign
+Smoke test:
 
 ```bash
-python scripts/run_bench.py
+python3 scripts/run_bench.py \
+  --campaign extended \
+  --repeats 3 \
+  --warmups 1 \
+  --blocks 1 \
+  --force-rebuild
 ```
 
-Defaults:
+Full extended campaign:
 
-- Groth16;
-- 5 shuffled warm-up rounds;
-- 30 measured repetitions per logical configuration;
-- 3 blocks of 10 repetitions;
-- monolithic and sequential separate-proof executions;
-- deterministic seed `20260623`.
+```bash
+python3 scripts/run_bench.py \
+  --campaign extended \
+  --repeats 30 \
+  --warmups 5 \
+  --blocks 3
+```
+
+## Complete paper campaign
+
+```bash
+python3 scripts/run_bench.py --campaign paper
+```
+
+Defaults are Groth16, five shuffled warm-ups, 30 measured repetitions, three
+blocks, and deterministic seed `20260623`.
 
 Results are stored under:
 
 ```text
-results/<UTC-run-id>_groth16/
+results/<UTC-run-id>_<campaign>_<proving-system>/
 ```
 
-The runner writes:
-
-- `environment.json`: hardware/software/provenance metadata;
-- `artifacts.csv`: static circuit metrics and offline compile/setup costs;
-- `raw_runs.csv`: one row per logical measured execution;
-- `component_runs.csv`: one row per component proof, including components of
-  separate-proof baselines.
-
-## Summaries, plots, and tables
+## Summaries
 
 ```bash
-python scripts/summarize_results.py results/<run-id>
-python scripts/plot_results.py results/<run-id>
-python scripts/build_tables.py results/<run-id>
+python3 scripts/summarize_results.py results/<run-id>
 ```
 
-The summarizer creates:
+The summarizer writes:
 
 - `summary.csv`;
-- `composition_comparison.csv`;
+- `composition_comparison.csv`, distinguishing `legacy` and `linked` pairs;
+- `binding_overhead.csv`;
+- `composition_variants.csv`;
 - `limit_budget_equivalence.csv`.
 
-The plotting script creates independent PDF figures under `figures/`. The table
-script creates IEEE-compatible LaTeX fragments under `tables/`.
-
-## Methodological notes
-
-Compilation and trusted setup are treated as offline costs and are not included
-in witness/prove/verify timings. Source-fingerprinted build directories prevent
-stale R1CS and proving-key reuse after circuit changes.
-
-The nullifier circuit proves correct derivation only. Ledger-level nullifier
-non-reuse remains an external state check.
+The `legacy` separate rows are optimistic unbound lower bounds. The `linked`
+rows are the security-consistent RQ3 comparison.

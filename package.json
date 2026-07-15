@@ -1,7 +1,7 @@
 {
   "name": "zkp-policy-model-benchmarks",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Circom policy kernels aligned with a policy model for privacy-preserving payment systems",
   "dependencies": {
     "circomlib": "^2.0.5",
@@ -9,7 +9,12 @@
   },
   "scripts": {
     "generate-inputs": "node scripts/generate_inputs.js",
-    "campaign:smoke": "python3 scripts/run_bench.py --repeats 3 --warmups 1 --blocks 1 --no-separate",
-    "campaign:full": "python3 scripts/run_bench.py"
+    "validate:core": "python3 scripts/validate_circuits.py --campaign core",
+    "validate:paper": "python3 scripts/validate_circuits.py --campaign paper",
+    "campaign:smoke": "python3 scripts/run_bench.py --campaign extended --repeats 3 --warmups 1 --blocks 1 --force-rebuild",
+    "campaign:core": "python3 scripts/run_bench.py --campaign core",
+    "campaign:paper": "python3 scripts/run_bench.py --campaign paper",
+    "validate:extended": "python3 scripts/validate_circuits.py --campaign extended",
+    "campaign:extended": "python3 scripts/run_bench.py --campaign extended"
   }
 }

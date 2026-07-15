@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Run functional valid/boundary/invalid checks before timing experiments.
+"""Functional validation for any campaign profile in the unified manifest.
 
-The script compiles circuits when necessary but does not run trusted setup or
-proof generation. An invalid test succeeds when witness generation fails.
+Core circuits receive valid, boundary, and invalid witnesses. Linked circuits
+add transaction-binding tests: an incorrect public tag and mutations of shared
+values that are irrelevant to the local component policy must be rejected.
+Separate linked bundles are also checked for application-level tag equality.
+
+No trusted setup or proof generation is required.
 """
 
 from __future__ import annotations
@@ -17,13 +21,34 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from experiment_manifest import circuit_experiments, filter_experiments, input_path
+from experiment_manifest import (
+    CAMPAIGNS,
+    CircuitExperiment,
+    SeparateProofBaseline,
+    filter_experiments,
+    input_path,
+    logical_experiments,
+    required_circuit_specs,
+)
 from run_bench import run_command, source_fingerprint
 
 
 FIELD_PRIME = int(
     "21888242871839275222246405745257275088548364400416034343698204186575808495617"
 )
+
+BINDING_ONLY_MUTATIONS: dict[str, str] = {
+    "linked_valid_limit_validity_32": "spent_window",
+    "linked_valid_limit_limit_32": "balance",
+    "linked_account_budget_validity_32": "spent_private",
+    "linked_account_budget_transition_32": "spent_window",
+    "linked_account_budget_limit_32": "receiver_balance",
+    "linked_account_budget_budget_32": "sender_balance",
+    "linked_token_bundle_membership_32_depth_16": "amount",
+    "linked_token_bundle_nullifier_32_depth_16": "token_value",
+    "linked_token_bundle_validity_32_depth_16": "spent_private",
+    "linked_token_bundle_budget_32_depth_16": "token_randomness",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,8 +58,14 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(__file__).resolve().parents[1],
     )
+    parser.add_argument("--campaign", choices=CAMPAIGNS, default="paper")
     parser.add_argument("--families", nargs="*")
     parser.add_argument("--experiments", nargs="*")
+    parser.add_argument(
+        "--no-generate-inputs",
+        action="store_true",
+        help="Fail rather than regenerate deterministic inputs when missing.",
+    )
     return parser.parse_args()
 
 
@@ -44,6 +75,10 @@ def integer(payload: dict[str, Any], key: str) -> int:
 
 def assign(payload: dict[str, Any], key: str, value: int) -> None:
     payload[key] = str(value)
+
+
+def increment(payload: dict[str, Any], key: str) -> None:
+    payload[key] = str((integer(payload, key) + 1) % FIELD_PRIME)
 
 
 def boundary_and_invalid(
@@ -65,19 +100,11 @@ def boundary_and_invalid(
         assign(boundary, "anonymity_budget", total)
         assign(invalid, "anonymity_budget", total - 1)
     elif family == "state_transition_and_conservation":
-        assign(
-            invalid,
-            "sender_new",
-            integer(valid, "sender_new") + 1,
-        )
+        assign(invalid, "sender_new", integer(valid, "sender_new") + 1)
     elif family == "merkle_membership":
-        assign(invalid, "root", (integer(valid, "root") + 1) % FIELD_PRIME)
+        increment(invalid, "root")
     elif family == "nullifier_correctness":
-        assign(
-            invalid,
-            "nullifier",
-            (integer(valid, "nullifier") + 1) % FIELD_PRIME,
-        )
+        increment(invalid, "nullifier")
     elif family == "local_validity_and_operating_limit":
         amount = integer(valid, "amount")
         total = integer(valid, "spent_window") + amount
@@ -87,11 +114,7 @@ def boundary_and_invalid(
     elif family == "account_policy_core":
         total = integer(valid, "spent_window") + integer(valid, "amount")
         assign(boundary, "window_limit", total)
-        assign(
-            invalid,
-            "receiver_new",
-            integer(valid, "receiver_new") + 1,
-        )
+        assign(invalid, "receiver_new", integer(valid, "receiver_new") + 1)
     elif family == "account_policy_with_privacy_budget":
         spent_total = integer(valid, "spent_window") + integer(valid, "amount")
         private_total = integer(valid, "spent_private") + integer(valid, "amount")
@@ -108,7 +131,9 @@ def boundary_and_invalid(
     return boundary, invalid
 
 
-def compile_if_needed(project_root: Path, spec: Any) -> tuple[Path, Path, Path]:
+def compile_if_needed(
+    project_root: Path, spec: CircuitExperiment
+) -> tuple[Path, Path, Path]:
     fingerprint = source_fingerprint(project_root, spec)
     build_dir = (
         project_root / "build" / "validation" / f"{spec.name}_{fingerprint[:12]}"
@@ -164,58 +189,157 @@ def witness_succeeds(
         return result.returncode == 0 and witness.exists(), output
 
 
+def ensure_inputs(
+    project_root: Path,
+    specs: list[CircuitExperiment],
+    no_generate: bool,
+) -> None:
+    missing = [input_path(project_root, spec.name) for spec in specs]
+    missing = [path for path in missing if not path.exists()]
+    if missing and not no_generate:
+        run_command(
+            [
+                "node",
+                str(project_root / "scripts" / "generate_inputs.js"),
+                "--out-dir",
+                str(project_root / "inputs" / "valid"),
+            ],
+            cwd=project_root,
+        )
+        missing = [path for path in missing if not path.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Missing benchmark inputs:\n" + "\n".join(f"- {p}" for p in missing)
+        )
+
+
+def append_result(
+    rows: list[dict[str, Any]],
+    *,
+    spec_name: str,
+    family: str,
+    composition_id: str | None,
+    case_name: str,
+    expected: bool,
+    actual: bool,
+    diagnostic: str,
+) -> None:
+    passed = actual == expected
+    rows.append(
+        {
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "experiment_name": spec_name,
+            "family": family,
+            "composition_id": composition_id,
+            "case": case_name,
+            "expected_success": expected,
+            "actual_success": actual,
+            "test_passed": passed,
+            "diagnostic": "" if passed else diagnostic,
+        }
+    )
+    print(f"{spec_name:58s} {case_name:32s} {'PASS' if passed else 'FAIL'}")
+
+
 def main() -> int:
     args = parse_args()
     project_root = args.project_root.resolve()
     if shutil.which("circom") is None or shutil.which("node") is None:
         raise EnvironmentError("circom and node must be available in PATH")
 
-    selected = filter_experiments(
-        circuit_experiments(), names=args.experiments, families=args.families
+    logical = filter_experiments(
+        logical_experiments(args.campaign),
+        names=args.experiments,
+        families=args.families,
     )
-    if not selected:
-        raise ValueError("No circuits selected")
+    if not logical:
+        raise ValueError("No experiments selected")
+    specs = required_circuit_specs(logical)
+    ensure_inputs(project_root, specs, args.no_generate_inputs)
 
     rows: list[dict[str, Any]] = []
-    for spec in selected:
+    for spec in specs:
         source = input_path(project_root, spec.name)
-        if not source.exists():
-            raise FileNotFoundError(
-                f"Missing {source}; run node scripts/generate_inputs.js first"
-            )
         valid = json.loads(source.read_text(encoding="utf-8"))
-        boundary, invalid = boundary_and_invalid(spec.family, valid)
         build_dir, witness_js, wasm = compile_if_needed(project_root, spec)
 
-        for case_name, payload, expected in (
-            ("valid", valid, True),
-            ("boundary", boundary, True),
-            ("invalid", invalid, False),
-        ):
-            actual, output = witness_succeeds(
+        if spec.binding_mode == "tx_tag":
+            cases: list[tuple[str, dict[str, Any], bool]] = [("valid", valid, True)]
+
+            bad_tag = copy.deepcopy(valid)
+            increment(bad_tag, "tx_tag")
+            cases.append(("incorrect_tx_tag", bad_tag, False))
+
+            mutation_field = BINDING_ONLY_MUTATIONS.get(spec.name)
+            if mutation_field:
+                changed = copy.deepcopy(valid)
+                increment(changed, mutation_field)
+                cases.append((f"binding_only_{mutation_field}", changed, False))
+
+        else:
+            boundary, invalid = boundary_and_invalid(spec.family, valid)
+            cases = [
+                ("valid", valid, True),
+                ("boundary", boundary, True),
+                ("invalid", invalid, False),
+            ]
+
+        for case_name, payload, expected in cases:
+            actual, diagnostic = witness_succeeds(
                 project_root, build_dir, witness_js, wasm, payload
             )
-            passed = actual == expected
-            rows.append(
-                {
-                    "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-                    "experiment_name": spec.name,
-                    "family": spec.family,
-                    "bits": spec.bits,
-                    "merkle_depth": spec.merkle_depth,
-                    "case": case_name,
-                    "expected_witness_success": expected,
-                    "actual_witness_success": actual,
-                    "test_passed": passed,
-                    "diagnostic": "" if passed else output,
-                }
-            )
-            print(
-                f"{spec.name:48s} {case_name:8s} "
-                f"{'PASS' if passed else 'FAIL'}"
+            append_result(
+                rows,
+                spec_name=spec.name,
+                family=spec.family,
+                composition_id=spec.composition_id,
+                case_name=case_name,
+                expected=expected,
+                actual=actual,
+                diagnostic=diagnostic,
             )
 
-    output = project_root / "results" / "functional_validation.csv"
+    # Application-level bundle rule for linked separate proofs.
+    for experiment in logical:
+        if not isinstance(experiment, SeparateProofBaseline):
+            continue
+        if experiment.binding_mode != "tx_tag":
+            continue
+        tags = [
+            str(
+                json.loads(
+                    input_path(project_root, name).read_text(encoding="utf-8")
+                )["tx_tag"]
+            )
+            for name in experiment.components
+        ]
+        valid_match = len(tags) == len(experiment.components) and len(set(tags)) == 1
+        append_result(
+            rows,
+            spec_name=experiment.name,
+            family=experiment.family,
+            composition_id=experiment.composition_id,
+            case_name="bundle_equal_tags",
+            expected=True,
+            actual=valid_match,
+            diagnostic=str(tags),
+        )
+
+        mismatched = list(tags)
+        mismatched[-1] = str((int(mismatched[-1]) + 1) % FIELD_PRIME)
+        rejected = len(set(mismatched)) != 1
+        append_result(
+            rows,
+            spec_name=experiment.name,
+            family=experiment.family,
+            composition_id=experiment.composition_id,
+            case_name="bundle_mismatched_tag_rejected",
+            expected=True,
+            actual=rejected,
+            diagnostic=str(mismatched),
+        )
+
+    output = project_root / "results" / f"functional_validation_{args.campaign}.csv"
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0].keys()))

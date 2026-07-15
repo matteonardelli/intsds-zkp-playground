@@ -2,13 +2,10 @@
 "use strict";
 
 /**
- * Generate deterministic valid inputs for the first policy-model campaign.
+ * Generate deterministic valid inputs for the complete policy-kernel campaign.
  *
- * Requirements:
- *   npm install
- *
- * The repository package.json must include circomlibjs. All integer values are
- * serialized as decimal strings to avoid JavaScript number truncation.
+ * One generator serves the core, linked, and paper campaign profiles. All
+ * values are serialized as decimal strings to avoid JavaScript truncation.
  */
 
 const fs = require("fs");
@@ -21,6 +18,9 @@ const FIELD_PRIME = BigInt(
 );
 const BITS = [16, 32, 64];
 const DEPTHS = [8, 16, 32];
+const DOMAIN_VALID_LIMIT = 1101n;
+const DOMAIN_ACCOUNT_BUDGET = 1201n;
+const DOMAIN_TOKEN_BUNDLE = 1301n;
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -65,9 +65,8 @@ function stringifyBigInts(value) {
 }
 
 function writeJson(outDir, name, payload) {
-  const outputPath = path.join(outDir, `${name}.json`);
   fs.writeFileSync(
-    outputPath,
+    path.join(outDir, `${name}.json`),
     `${JSON.stringify(stringifyBigInts(payload), null, 2)}\n`,
     "utf8"
   );
@@ -80,22 +79,17 @@ function arithmeticValues(bits) {
   const receiverBalance = amount * 3n;
   const spentWindow = amount * 2n;
   const spentPrivate = amount;
-  const windowLimit = amount * 5n;
-  const anonymityBudget = amount * 4n;
-  const senderNew = senderBalance - amount;
-  const receiverNew = receiverBalance + amount;
-
   return {
     amount,
     balance: senderBalance,
     sender_balance: senderBalance,
     receiver_balance: receiverBalance,
-    sender_new: senderNew,
-    receiver_new: receiverNew,
+    sender_new: senderBalance - amount,
+    receiver_new: receiverBalance + amount,
     spent_window: spentWindow,
     spent_private: spentPrivate,
-    window_limit: windowLimit,
-    anonymity_budget: anonymityBudget,
+    window_limit: amount * 5n,
+    anonymity_budget: amount * 4n,
   };
 }
 
@@ -107,7 +101,6 @@ function buildMerklePath(poseidon, leaf, depth, seed, namespace) {
   const pathElements = [];
   const pathIndices = [];
   let current = leaf;
-
   for (let level = 0; level < depth; level += 1) {
     const sibling = deterministicField(seed, `${namespace}:sibling:${level}`);
     const index = level % 2;
@@ -118,20 +111,10 @@ function buildMerklePath(poseidon, leaf, depth, seed, namespace) {
         ? poseidonValue(poseidon, [current, sibling])
         : poseidonValue(poseidon, [sibling, current]);
   }
-
-  return {
-    root: current,
-    path_elements: pathElements,
-    path_indices: pathIndices,
-  };
+  return { root: current, path_elements: pathElements, path_indices: pathIndices };
 }
 
-async function main() {
-  const { outDir, seed } = parseArgs();
-  fs.mkdirSync(outDir, { recursive: true });
-
-  const poseidon = await buildPoseidon();
-
+function generateCoreInputs(outDir, seed, poseidon) {
   for (const bits of BITS) {
     const v = arithmeticValues(bits);
 
@@ -139,19 +122,16 @@ async function main() {
       balance: v.balance,
       amount: v.amount,
     });
-
     writeJson(outDir, `operating_limit_${bits}`, {
       spent_window: v.spent_window,
       amount: v.amount,
       window_limit: v.window_limit,
     });
-
     writeJson(outDir, `privacy_budget_${bits}`, {
       spent_private: v.spent_private,
       amount: v.amount,
       anonymity_budget: v.anonymity_budget,
     });
-
     writeJson(outDir, `state_transition_and_conservation_${bits}`, {
       sender_balance: v.sender_balance,
       receiver_balance: v.receiver_balance,
@@ -159,14 +139,12 @@ async function main() {
       sender_new: v.sender_new,
       receiver_new: v.receiver_new,
     });
-
     writeJson(outDir, `local_validity_and_operating_limit_${bits}`, {
       balance: v.balance,
       spent_window: v.spent_window,
       amount: v.amount,
       window_limit: v.window_limit,
     });
-
     writeJson(outDir, `account_policy_core_${bits}`, {
       sender_balance: v.sender_balance,
       receiver_balance: v.receiver_balance,
@@ -176,7 +154,6 @@ async function main() {
       receiver_new: v.receiver_new,
       window_limit: v.window_limit,
     });
-
     writeJson(outDir, `account_policy_with_privacy_budget_${bits}`, {
       sender_balance: v.sender_balance,
       receiver_balance: v.receiver_balance,
@@ -249,6 +226,136 @@ async function main() {
       path_indices: tokenMerkle.path_indices,
     });
   }
+}
+
+function generateLinkedInputs(outDir, seed, poseidon) {
+  const v = arithmeticValues(32);
+
+  const validLimitRandomness = deterministicField(seed, "linked:valid-limit:blinding");
+  const validLimitTag = poseidonValue(poseidon, [
+    DOMAIN_VALID_LIMIT,
+    v.balance,
+    v.spent_window,
+    v.amount,
+    v.window_limit,
+    validLimitRandomness,
+  ]);
+  const validLimitPayload = {
+    balance: v.balance,
+    spent_window: v.spent_window,
+    amount: v.amount,
+    window_limit: v.window_limit,
+    binding_randomness: validLimitRandomness,
+    tx_tag: validLimitTag,
+  };
+  for (const name of [
+    "linked_valid_limit_monolithic_32",
+    "linked_valid_limit_validity_32",
+    "linked_valid_limit_limit_32",
+  ]) {
+    writeJson(outDir, name, validLimitPayload);
+  }
+
+  const accountRandomness = deterministicField(seed, "linked:account-budget:blinding");
+  const accountTag = poseidonValue(poseidon, [
+    DOMAIN_ACCOUNT_BUDGET,
+    v.sender_balance,
+    v.receiver_balance,
+    v.spent_window,
+    v.spent_private,
+    v.amount,
+    v.sender_new,
+    v.receiver_new,
+    v.window_limit,
+    v.anonymity_budget,
+    accountRandomness,
+  ]);
+  const accountPayload = {
+    sender_balance: v.sender_balance,
+    receiver_balance: v.receiver_balance,
+    spent_window: v.spent_window,
+    spent_private: v.spent_private,
+    amount: v.amount,
+    sender_new: v.sender_new,
+    receiver_new: v.receiver_new,
+    window_limit: v.window_limit,
+    anonymity_budget: v.anonymity_budget,
+    binding_randomness: accountRandomness,
+    tx_tag: accountTag,
+  };
+  for (const name of [
+    "linked_account_budget_monolithic_32",
+    "linked_account_budget_validity_32",
+    "linked_account_budget_transition_32",
+    "linked_account_budget_limit_32",
+    "linked_account_budget_budget_32",
+  ]) {
+    writeJson(outDir, name, accountPayload);
+  }
+
+  const depth = 16;
+  const tokenSecret = deterministicField(seed, "linked:token:secret");
+  const tokenRandomness = deterministicField(seed, "linked:token:randomness");
+  const nullifierDomain = deterministicField(seed, "linked:token:nullifier-domain");
+  const tokenLeaf = poseidonValue(poseidon, [tokenSecret, v.balance, tokenRandomness]);
+  const merkle = buildMerklePath(
+    poseidon,
+    tokenLeaf,
+    depth,
+    seed,
+    "linked:token:depth16"
+  );
+  const nullifier = poseidonValue(poseidon, [tokenSecret, nullifierDomain]);
+  const tokenBindingRandomness = deterministicField(seed, "linked:token:blinding");
+  const tokenTag = poseidonValue(poseidon, [
+    DOMAIN_TOKEN_BUNDLE,
+    tokenSecret,
+    v.balance,
+    tokenRandomness,
+    v.amount,
+    v.spent_private,
+    merkle.root,
+    nullifier,
+    nullifierDomain,
+    v.anonymity_budget,
+    tokenBindingRandomness,
+  ]);
+  const tokenCommon = {
+    token_secret: tokenSecret,
+    token_value: v.balance,
+    token_randomness: tokenRandomness,
+    amount: v.amount,
+    spent_private: v.spent_private,
+    root: merkle.root,
+    nullifier,
+    nullifier_domain: nullifierDomain,
+    anonymity_budget: v.anonymity_budget,
+    binding_randomness: tokenBindingRandomness,
+    tx_tag: tokenTag,
+  };
+  const tokenWithPath = {
+    ...tokenCommon,
+    path_elements: merkle.path_elements,
+    path_indices: merkle.path_indices,
+  };
+  writeJson(outDir, "linked_token_bundle_monolithic_32_depth_16", tokenWithPath);
+  writeJson(outDir, "linked_token_bundle_membership_32_depth_16", tokenWithPath);
+  for (const name of [
+    "linked_token_bundle_nullifier_32_depth_16",
+    "linked_token_bundle_validity_32_depth_16",
+    "linked_token_bundle_budget_32_depth_16",
+  ]) {
+    writeJson(outDir, name, tokenCommon);
+  }
+}
+
+async function main() {
+  const { outDir, seed } = parseArgs();
+  fs.mkdirSync(outDir, { recursive: true });
+  const poseidon = await buildPoseidon();
+
+  generateCoreInputs(outDir, seed, poseidon);
+  generateLinkedInputs(outDir, seed, poseidon);
 
   const metadata = {
     seed,
@@ -256,16 +363,25 @@ async function main() {
     field_prime: FIELD_PRIME.toString(10),
     bits: BITS,
     merkle_depths: DEPTHS,
+    linked_configurations: [
+      "valid_limit_b32",
+      "account_budget_b32",
+      "token_bundle_b32_d16",
+    ],
+    binding_domains: {
+      valid_limit: DOMAIN_VALID_LIMIT.toString(10),
+      account_budget: DOMAIN_ACCOUNT_BUDGET.toString(10),
+      token_bundle: DOMAIN_TOKEN_BUNDLE.toString(10),
+    },
     note:
-      "Deterministic valid inputs for performance experiments; all large integers are decimal strings.",
+      "Deterministic valid inputs for the complete core+linked paper campaign.",
   };
   fs.writeFileSync(
     path.join(outDir, "_metadata.json"),
     `${JSON.stringify(metadata, null, 2)}\n`,
     "utf8"
   );
-
-  console.log(`Generated valid inputs in ${outDir}`);
+  console.log(`Generated complete campaign inputs in ${outDir}`);
 }
 
 main().catch((error) => {
