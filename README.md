@@ -117,7 +117,7 @@ npm install
 The existing scripts expect the Powers of Tau file at:
 
 ```text
-powersOfTau28_hez_final_12.ptau
+powersOfTau28_hez_final_15.ptau
 ```
 
 ## Experimental scripts
