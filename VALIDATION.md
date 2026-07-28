@@ -1,31 +1,26 @@
 # Validation
 
-The aligned source tree was checked with:
-
-- Circom compiler 2.2.2 (all files declare `pragma circom 2.1.6`);
-- circomlib 2.0.5.
-
-## Compilation checks
-
-All canonical wrappers and all legacy compatibility wrappers were compiled to
-R1CS successfully.
-
-## Witness checks
-
-Valid witnesses were generated successfully for representative 32-bit or
-depth-8 instances of:
+The circuits were developed for Circom 2.2.x with circomlib 2.0.5. Functional
+validation covers valid, boundary, and invalid instances for:
 
 - local financial validity;
-- operating limit;
-- privacy budget;
+- operating limits;
+- privacy budgets;
 - state transition and value conservation;
-- local-validity + operating-limit composition;
-- account policy core;
-- account policy with privacy budget;
-- Poseidon Merkle membership;
-- Poseidon nullifier correctness;
-- token policy bundle.
+- Merkle membership;
+- nullifier derivation;
+- account- and token-oriented compositions;
+- incorrect transaction commitments;
+- mismatched commitments across otherwise valid component proofs.
 
-Poseidon roots and nullifiers used in the membership checks were computed with
-circomlibjs only for validation. Input-generation scripts are intentionally
-left for the forthcoming evaluation-harness revision.
+Run the complete validation profile with:
+
+```bash
+python3 scripts/validate_circuits.py --scope all
+```
+
+Static manifest and post-processing checks are available through:
+
+```bash
+python3 -m unittest discover -s tests
+```

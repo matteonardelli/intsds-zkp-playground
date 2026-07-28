@@ -1,110 +1,122 @@
-# Experimental campaign scripts
+# Experimental scripts
 
-The complete experimental matrix is defined only in:
+The complete experimental matrix is defined once in:
 
 ```text
 scripts/experiment_manifest.py
 ```
 
-`run_bench.py`, `validate_circuits.py`, and `summarize_results.py` all import
-this manifest. There is no separate runner or manifest for the linked
-extension.
+The runner, validator, summarizer, table builder, and plotting scripts consume
+this shared definition.
 
-## Campaign profiles
-
-- `core`: original individual kernels, monolithic compositions, and unbound
-  separate-proof lower bounds;
-- `extended`: the focused RQ3 campaign, rerunning the three representative
-  legacy variants together with their transaction-tag-linked counterparts;
-- `paper`: the complete core matrix plus the linked extension.
-
-## Install
-
-From the repository root:
+## Canonical one-command reproduction
 
 ```bash
-npm install
+python3 scripts/reproduce_paper.py
 ```
 
-Place the only supported Powers of Tau file at:
+This command:
 
-```text
-powersOfTau28_hez_final_15.ptau
-```
+1. validates all circuits and binding checks;
+2. runs all configurations used by RQ1, RQ2, and RQ3;
+3. writes raw logical and component measurements;
+4. computes distribution summaries and RQ3 ratios;
+5. generates all LaTeX tables and figures.
 
-The post-processing scripts use only the Python standard library. Plot and
-LaTeX-table generation additionally require `pandas` and `matplotlib`.
+Everything is stored in one directory, `results/<run-id>/`. The default run
+contains five warm-ups and 30 measured repetitions per logical configuration,
+divided into three shuffled blocks.
 
-## Generate deterministic inputs
+A smoke test is:
 
 ```bash
-node scripts/generate_inputs.js
+python3 scripts/reproduce_paper.py \
+  --repeats 3 --warmups 1 --blocks 1
 ```
 
-The same generator creates inputs for every campaign profile. The runner calls
-it automatically when required inputs are missing.
+## Optional research-question scopes
 
-## Functional validation
+The low-level runner supports two partial scopes for development:
 
 ```bash
-python3 scripts/validate_circuits.py --campaign extended
-python3 scripts/validate_circuits.py --campaign paper
+python3 scripts/run_bench.py --scope rq1-rq2
+python3 scripts/run_bench.py --scope rq3
 ```
 
-The extended validation checks invalid tags, binding-only field mutations, and
-application-level tag equality across component proofs.
+The default `--scope all` runs the complete paper evaluation. Partial scopes do
+not define different methodologies or campaigns.
 
-## Intern: extended campaign only
+Within RQ3, `baseline` and `commitment_linked` are comparison groups in the
+same run:
 
-Smoke test:
+- baseline monolithic circuit with a shared witness;
+- unbound separate-proof computational baseline;
+- commitment-linked monolithic circuit;
+- commitment-linked separate proofs.
 
-```bash
-python3 scripts/run_bench.py \
-  --campaign extended \
-  --repeats 3 \
-  --warmups 1 \
-  --blocks 1 \
-  --force-rebuild
-```
+The implementation signal `tx_tag` is normalized to
+`transaction_commitment` in derived CSV files.
 
-Full extended campaign:
+## Result files
 
-```bash
-python3 scripts/run_bench.py \
-  --campaign extended \
-  --repeats 30 \
-  --warmups 5 \
-  --blocks 3
-```
+Raw and structural files:
 
-## Complete paper campaign
+- `environment.json`;
+- `artifacts.csv`;
+- `raw_runs.csv`;
+- `component_runs.csv`;
+- `functional_validation.csv`.
 
-```bash
-python3 scripts/run_bench.py --campaign paper
-```
-
-Defaults are Groth16, five shuffled warm-ups, 30 measured repetitions, three
-blocks, and deterministic seed `20260623`.
-
-Results are stored under:
-
-```text
-results/<UTC-run-id>_<campaign>_<proving-system>/
-```
-
-## Summaries
-
-```bash
-python3 scripts/summarize_results.py results/<run-id>
-```
-
-The summarizer writes:
+Derived files:
 
 - `summary.csv`;
-- `composition_comparison.csv`, distinguishing `legacy` and `linked` pairs;
-- `binding_overhead.csv`;
 - `composition_variants.csv`;
+- `composition_comparison.csv`;
+- `binding_overhead.csv`;
 - `limit_budget_equivalence.csv`.
 
-The `legacy` separate rows are optimistic unbound lower bounds. The `linked`
-rows are the security-consistent RQ3 comparison.
+Paper tables:
+
+```text
+tables/table_representative_costs.tex
+tables/table_composition_ratios.tex
+tables/table_binding_overhead.tex
+```
+
+Paper figures:
+
+```text
+figures/fig_constraints_bitwidth.pdf
+figures/fig_proving_distribution_32.pdf
+figures/fig_merkle_constraints.pdf
+figures/fig_merkle_proving_distribution.pdf
+figures/fig_composition_proving_ratio.pdf
+```
+
+## Metrics
+
+For each measured repetition, the harness records:
+
+- witness-generation time;
+- proving time;
+- verification time;
+- bundle-level commitment-equality-check time;
+- total online time;
+- serialized proof size;
+- serialized public-output size;
+- verification and binding outcomes.
+
+Static metadata include constraint and wire counts, public/private inputs,
+R1CS and WASM sizes, and proving- and verification-key sizes. Compilation and
+circuit-specific setup are performed before online timing.
+
+## Rebuilding tables and figures
+
+For any complete result directory:
+
+```bash
+python3 scripts/build_paper_artifacts.py results/<run-id>
+```
+
+The output defaults to the same directory. `--rq3-run` is retained only for
+post-processing older archived measurements stored in two directories.

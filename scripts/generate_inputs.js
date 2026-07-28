@@ -2,9 +2,9 @@
 "use strict";
 
 /**
- * Generate deterministic valid inputs for the complete policy-kernel campaign.
+ * Generate deterministic valid inputs for the complete policy-kernel evaluation.
  *
- * One generator serves the core, linked, and paper campaign profiles. All
+ * One generator serves all evaluation scopes and RQ3 variants. All
  * values are serialized as decimal strings to avoid JavaScript truncation.
  */
 
@@ -374,14 +374,14 @@ async function main() {
       token_bundle: DOMAIN_TOKEN_BUNDLE.toString(10),
     },
     note:
-      "Deterministic valid inputs for the complete core+linked paper campaign.",
+      "Deterministic valid inputs for the complete paper evaluation.",
   };
   fs.writeFileSync(
     path.join(outDir, "_metadata.json"),
     `${JSON.stringify(metadata, null, 2)}\n`,
     "utf8"
   );
-  console.log(`Generated complete campaign inputs in ${outDir}`);
+  console.log(`Generated complete evaluation inputs in ${outDir}`);
 }
 
 main().catch((error) => {

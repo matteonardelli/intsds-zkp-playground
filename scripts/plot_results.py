@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Generate paper-oriented figures from a completed benchmark campaign.
+"""Generate paper-oriented figures from completed benchmark results.
 
-Requires pandas and matplotlib. Each result is written as an independent PDF.
+Requires pandas and matplotlib. Each figure is written independently. The
+composition plot uses only the security-consistent commitment-linked rows.
 """
 
 from __future__ import annotations
@@ -23,7 +24,19 @@ FAMILY_LABELS = {
     "account_policy_with_privacy_budget": "Account core + budget",
     "token_policy_bundle": "Token bundle",
     "merkle_membership": "Merkle membership",
-    "nullifier_correctness": "Nullifier correctness",
+    "nullifier_correctness": "Nullifier derivation",
+}
+GROUP_ALIASES = {
+    "legacy": "baseline",
+    "baseline": "baseline",
+    "linked": "commitment_linked",
+    "commitment": "commitment_linked",
+    "commitment_linked": "commitment_linked",
+}
+COMPOSITION_ORDER = {
+    "valid_limit_b32": 0,
+    "account_budget_b32": 1,
+    "token_bundle_b32_d16": 2,
 }
 
 
@@ -31,15 +44,33 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", type=Path)
     parser.add_argument(
+        "--rq3-run",
+        type=Path,
+        help="Optional archived RQ3 result directory; defaults to run_dir",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Output directory; defaults to run_dir",
+    )
+    parser.add_argument(
         "--format", choices=("pdf", "png"), default="pdf", help="Output format"
     )
     return parser.parse_args()
 
 
-def load_data(run_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    raw = pd.read_csv(run_dir / "raw_runs.csv")
-    summary = pd.read_csv(run_dir / "summary.csv")
-    composition = pd.read_csv(run_dir / "composition_comparison.csv")
+def read_frame(path: Path) -> pd.DataFrame:
+    if not path.exists() or path.stat().st_size == 0:
+        return pd.DataFrame()
+    return pd.read_csv(path)
+
+
+def load_data(
+    run_dir: Path, rq3_run: Path
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    raw = read_frame(run_dir / "raw_runs.csv")
+    summary = read_frame(run_dir / "summary.csv")
+    composition = read_frame(rq3_run / "composition_comparison.csv")
 
     for frame in (raw, summary, composition):
         for column in (
@@ -56,6 +87,10 @@ def load_data(run_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         ):
             if column in frame.columns:
                 frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    if "comparison_group" in composition.columns:
+        composition["comparison_group"] = composition["comparison_group"].map(
+            lambda value: GROUP_ALIASES.get(str(value), str(value))
+        )
     return raw, summary, composition
 
 
@@ -163,7 +198,15 @@ def plot_merkle_proving(
 def plot_composition_ratio(
     composition: pd.DataFrame, figures_dir: Path, extension: str
 ) -> None:
+    if composition.empty:
+        return
     data = composition.copy()
+    if "comparison_group" in data.columns:
+        data = data[data["comparison_group"] == "commitment_linked"].copy()
+    if data.empty:
+        return
+    data["_order"] = data["composition_id"].map(COMPOSITION_ORDER).fillna(99)
+    data = data.sort_values("_order")
     data["label"] = data.apply(
         lambda row: (
             f"{FAMILY_LABELS.get(row['family'], row['family'])}\n"
@@ -187,15 +230,18 @@ def plot_composition_ratio(
 def main() -> int:
     args = parse_args()
     run_dir = args.run_dir.resolve()
-    raw, summary, composition = load_data(run_dir)
-    figures_dir = run_dir / "figures"
+    rq3_run = (args.rq3_run or args.run_dir).resolve()
+    output_dir = (args.output_dir or args.run_dir).resolve()
+    raw, summary, composition = load_data(run_dir, rq3_run)
+    figures_dir = output_dir / "figures"
 
+    if raw.empty or summary.empty:
+        raise ValueError("Core raw_runs.csv and summary.csv must be non-empty")
     plot_constraint_scaling(summary, figures_dir, args.format)
     plot_proving_distributions(raw, figures_dir, args.format)
     plot_merkle_constraints(summary, figures_dir, args.format)
     plot_merkle_proving(raw, figures_dir, args.format)
-    if not composition.empty:
-        plot_composition_ratio(composition, figures_dir, args.format)
+    plot_composition_ratio(composition, figures_dir, args.format)
 
     print(f"Figures written to {figures_dir}")
     return 0

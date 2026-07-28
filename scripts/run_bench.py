@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""Run the policy-kernel benchmark campaign from the unified manifest.
+"""Run the policy-kernel evaluation from the unified manifest.
 
 The harness:
 - uses the single matrix in experiment_manifest.py;
-- supports core, extended, and complete paper campaign profiles;
+- runs the complete paper evaluation by default;
 - generates deterministic valid inputs when needed;
 - compiles and sets up each unique circuit once;
 - performs shuffled warm-up and measured rounds;
 - records raw logical-run and component-run observations;
 - keeps compilation/setup costs separate from transaction-path costs;
 - supports monolithic circuits and sequential separate-proof baselines;
-- enforces transaction-tag equality for security-consistent linked bundles.
+- enforces transaction-commitment equality for security-consistent commitment-linked bundles.
 
-Complete paper campaign:
-    python scripts/run_bench.py --campaign paper
+Complete paper evaluation:
+    python scripts/run_bench.py
 
-Focused extended composition campaign:
-    python scripts/run_bench.py --campaign extended
+Optional RQ3-only development run:
+    python scripts/run_bench.py --scope rq3
 
 Useful smoke test:
-    python scripts/run_bench.py --campaign extended --repeats 3 --warmups 1 \
+    python scripts/run_bench.py --scope rq3 --repeats 3 --warmups 1 \
         --blocks 1 --force-rebuild
 """
 
@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
 
 from experiment_manifest import (
-    CAMPAIGNS,
+    SCOPES,
     DEFAULT_SEED,
     CircuitExperiment,
     ExperimentLike,
@@ -119,18 +119,19 @@ def parse_args() -> argparse.Namespace:
         help="Repository root (default: parent of scripts/).",
     )
     parser.add_argument(
-        "--campaign",
-        choices=CAMPAIGNS,
-        default="paper",
+        "--scope",
+        choices=SCOPES,
+        default="all",
         help=(
-            "Campaign profile: core (original matrix), extended (focused same-run RQ3 comparison), or paper (complete reproducibility run)."
+            "Evaluation scope: all (default), rq1-rq2, or rq3. Partial scopes "
+            "are intended only for development and targeted reruns."
         ),
     )
     parser.add_argument(
         "--proving-system",
         choices=("groth16", "plonk"),
         default="groth16",
-        help="Groth16 is the default for the first campaign.",
+        help="Groth16 is the default proving system used by the paper.",
     )
     parser.add_argument("--repeats", type=int, default=30)
     parser.add_argument("--warmups", type=int, default=5)
@@ -281,7 +282,7 @@ def write_environment_metadata(
     package_lock = project_root / "package-lock.json"
     metadata: dict[str, Any] = {
         "run_id": output_path.parent.name,
-        "campaign_profile": args.campaign,
+        "evaluation_scope": args.scope,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "project_root": str(project_root),
         "git_commit": git_commit(project_root),
@@ -304,7 +305,7 @@ def write_environment_metadata(
         "separate_proof_baselines": not args.no_separate,
         "binding_scheme": {
             "hash": "Poseidon",
-            "bundle_rule": "all component proofs verify and expose the same tx_tag",
+            "bundle_rule": "all component proofs verify and expose the same transaction commitment (tx_tag signal)",
             "applies_to": "experiments with binding_mode=tx_tag",
         },
         "ptau_file": str(ptaU_file),
@@ -672,7 +673,7 @@ def execute_logical_run(
     logical: ExperimentLike,
     prepared: dict[str, PreparedCircuit],
     proving_system: str,
-    campaign_run_id: str,
+    evaluation_run_id: str,
     phase: str,
     block: int,
     repetition: int,
@@ -712,7 +713,7 @@ def execute_logical_run(
         if result.error
     )
     if proofs_ok and binding_ok is False:
-        errors = (errors + " | " if errors else "") + "bundle tx_tag mismatch"
+        errors = (errors + " | " if errors else "") + "bundle transaction-commitment mismatch"
 
     component_total = sum_optional(
         result.total_online_time_s for _, result in component_results
@@ -724,7 +725,7 @@ def execute_logical_run(
     )
 
     base = {
-        "campaign_run_id": campaign_run_id,
+        "evaluation_run_id": evaluation_run_id,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "phase": phase,
         "block": block,
@@ -768,7 +769,7 @@ def execute_logical_run(
         result_dict.pop("binding_value", None)
         component_rows.append(
             {
-                "campaign_run_id": campaign_run_id,
+                "evaluation_run_id": evaluation_run_id,
                 "timestamp_utc": base["timestamp_utc"],
                 "phase": phase,
                 "block": block,
@@ -854,6 +855,12 @@ def main() -> int:
     ensure_positive_config(args)
     project_root = args.project_root.resolve()
 
+    # Make npm-installed command-line tools (notably SnarkJS) available without
+    # requiring a global installation. Circom itself is still expected in PATH.
+    local_bin = project_root / "node_modules" / ".bin"
+    if local_bin.exists():
+        os.environ["PATH"] = str(local_bin) + os.pathsep + os.environ.get("PATH", "")
+
     for tool in ("node", "circom", "snarkjs"):
         require_tool(tool)
 
@@ -863,7 +870,7 @@ def main() -> int:
 
     selected = filter_experiments(
         logical_experiments(
-            args.campaign, include_separate=not args.no_separate
+            args.scope, include_separate=not args.no_separate
         ),
         names=args.experiments,
         families=args.families,
@@ -879,9 +886,10 @@ def main() -> int:
         args.no_generate_inputs,
     )
 
+    suffix = "paper" if args.scope == "all" else args.scope
     run_id = args.run_id or datetime.now(timezone.utc).strftime(
         "%Y%m%dT%H%M%SZ"
-    ) + f"_{args.campaign}_{args.proving_system}"
+    ) + f"_{suffix}_{args.proving_system}"
     output_dir = project_root / "results" / run_id
     output_dir.mkdir(parents=True, exist_ok=False)
 
@@ -894,7 +902,7 @@ def main() -> int:
     )
 
     print(
-        f"Campaign profile: {args.campaign}; preparing "
+        f"Evaluation scope: {args.scope}; preparing "
         f"{len(required_specs)} unique circuits..."
     )
     prepared_list: list[PreparedCircuit] = []
@@ -917,7 +925,7 @@ def main() -> int:
     raw_path = output_dir / "raw_runs.csv"
     component_path = output_dir / "component_runs.csv"
     raw_fieldnames = [
-        "campaign_run_id",
+        "evaluation_run_id",
         "timestamp_utc",
         "phase",
         "block",
@@ -952,7 +960,7 @@ def main() -> int:
         "error",
     ]
     component_fieldnames = [
-        "campaign_run_id",
+        "evaluation_run_id",
         "timestamp_utc",
         "phase",
         "block",
@@ -1004,7 +1012,7 @@ def main() -> int:
                     logical=logical,
                     prepared=prepared,
                     proving_system=args.proving_system,
-                    campaign_run_id=run_id,
+                    evaluation_run_id=run_id,
                     phase="warmup",
                     block=0,
                     repetition=warmup,
@@ -1037,7 +1045,7 @@ def main() -> int:
                         logical=logical,
                         prepared=prepared,
                         proving_system=args.proving_system,
-                        campaign_run_id=run_id,
+                        evaluation_run_id=run_id,
                         phase="measured",
                         block=block,
                         repetition=global_rep,
@@ -1049,7 +1057,8 @@ def main() -> int:
                             component_writer, component_stream, component_row
                         )
 
-    latest = project_root / "results" / f"latest_{args.campaign}"
+    latest_name = "latest" if args.scope == "all" else f"latest_{args.scope}"
+    latest = project_root / "results" / latest_name
     try:
         if latest.is_symlink() or latest.exists():
             if latest.is_dir() and not latest.is_symlink():
@@ -1061,7 +1070,7 @@ def main() -> int:
     except OSError as exc:
         print(f"[WARN] Could not update results/latest symlink: {exc}")
 
-    print(f"\nCampaign completed: {output_dir}")
+    print(f"\nEvaluation completed: {output_dir}")
     print(f"Raw logical runs: {raw_path}")
     print(f"Component runs:   {component_path}")
     print(f"Offline artifacts:{output_dir / 'artifacts.csv'}")

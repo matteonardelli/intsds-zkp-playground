@@ -1,20 +1,21 @@
 {
   "name": "zkp-policy-model-benchmarks",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Circom policy kernels aligned with a policy model for privacy-preserving payment systems",
   "dependencies": {
     "circomlib": "^2.0.5",
-    "circomlibjs": "^0.1.7"
+    "circomlibjs": "^0.1.7",
+    "snarkjs": "0.7.6"
   },
   "scripts": {
     "generate-inputs": "node scripts/generate_inputs.js",
-    "validate:core": "python3 scripts/validate_circuits.py --campaign core",
-    "validate:paper": "python3 scripts/validate_circuits.py --campaign paper",
-    "campaign:smoke": "python3 scripts/run_bench.py --campaign extended --repeats 3 --warmups 1 --blocks 1 --force-rebuild",
-    "campaign:core": "python3 scripts/run_bench.py --campaign core",
-    "campaign:paper": "python3 scripts/run_bench.py --campaign paper",
-    "validate:extended": "python3 scripts/validate_circuits.py --campaign extended",
-    "campaign:extended": "python3 scripts/run_bench.py --campaign extended"
+    "validate:paper": "python3 scripts/validate_circuits.py --scope all",
+    "run:paper": "python3 scripts/run_bench.py --scope all",
+    "reproduce:paper": "python3 scripts/reproduce_paper.py",
+    "run:rq1-rq2": "python3 scripts/run_bench.py --scope rq1-rq2",
+    "run:rq3": "python3 scripts/run_bench.py --scope rq3",
+    "smoke:rq3": "python3 scripts/run_bench.py --scope rq3 --repeats 3 --warmups 1 --blocks 1 --force-rebuild",
+    "test:python": "python3 -m unittest discover -s tests"
   }
 }

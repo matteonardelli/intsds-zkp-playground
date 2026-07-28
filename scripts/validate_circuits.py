@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Functional validation for any campaign profile in the unified manifest.
+"""Functional validation for any evaluation scope in the unified manifest.
 
-Core circuits receive valid, boundary, and invalid witnesses. Linked circuits
-add transaction-binding tests: an incorrect public tag and mutations of shared
-values that are irrelevant to the local component policy must be rejected.
-Separate linked bundles are also checked for application-level tag equality.
+Core circuits receive valid, boundary, and invalid witnesses. Commitment-linked
+circuits add transaction-binding tests: an incorrect public commitment and
+mutations of shared values that are irrelevant to the local component policy
+must be rejected. Separate bundles are also checked for application-level
+transaction-commitment equality.
 
 No trusted setup or proof generation is required.
 """
@@ -22,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from experiment_manifest import (
-    CAMPAIGNS,
+    SCOPES,
     CircuitExperiment,
     SeparateProofBaseline,
     filter_experiments,
@@ -58,13 +59,21 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(__file__).resolve().parents[1],
     )
-    parser.add_argument("--campaign", choices=CAMPAIGNS, default="paper")
+    parser.add_argument("--scope", choices=SCOPES, default="all")
     parser.add_argument("--families", nargs="*")
     parser.add_argument("--experiments", nargs="*")
     parser.add_argument(
         "--no-generate-inputs",
         action="store_true",
         help="Fail rather than regenerate deterministic inputs when missing.",
+    )
+    parser.add_argument(
+        "--output-file",
+        type=Path,
+        help=(
+            "Validation CSV path; defaults to "
+            "results/functional_validation_<scope>.csv"
+        ),
     )
     return parser.parse_args()
 
@@ -248,7 +257,7 @@ def main() -> int:
         raise EnvironmentError("circom and node must be available in PATH")
 
     logical = filter_experiments(
-        logical_experiments(args.campaign),
+        logical_experiments(args.scope),
         names=args.experiments,
         families=args.families,
     )
@@ -268,7 +277,7 @@ def main() -> int:
 
             bad_tag = copy.deepcopy(valid)
             increment(bad_tag, "tx_tag")
-            cases.append(("incorrect_tx_tag", bad_tag, False))
+            cases.append(("incorrect_transaction_commitment", bad_tag, False))
 
             mutation_field = BINDING_ONLY_MUTATIONS.get(spec.name)
             if mutation_field:
@@ -299,7 +308,7 @@ def main() -> int:
                 diagnostic=diagnostic,
             )
 
-    # Application-level bundle rule for linked separate proofs.
+    # Application-level bundle rule for commitment-linked separate proofs.
     for experiment in logical:
         if not isinstance(experiment, SeparateProofBaseline):
             continue
@@ -339,7 +348,11 @@ def main() -> int:
             diagnostic=str(mismatched),
         )
 
-    output = project_root / "results" / f"functional_validation_{args.campaign}.csv"
+    output = (
+        args.output_file.resolve()
+        if args.output_file
+        else project_root / "results" / f"functional_validation_{args.scope}.csv"
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0].keys()))

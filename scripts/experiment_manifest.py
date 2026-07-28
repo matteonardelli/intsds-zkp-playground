@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
-"""Single source of truth for the policy-kernel benchmark campaign.
+"""Single source of truth for the policy-kernel evaluation.
 
-The manifest defines every circuit and logical experiment used in the paper:
-
-* ``core``: individual kernels, original monolithic compositions, and the
-  historical unbound separate-proof lower bounds;
-* ``extended``: a focused RQ3 campaign that reruns the three representative
-  legacy variants together with their security-consistent linked variants;
-* ``paper``: the union of the complete core matrix and linked extension and
-  therefore the complete reproducibility campaign.
+The manifest defines every circuit and logical experiment used in the paper.
+The canonical ``all`` scope contains RQ1, RQ2, and RQ3 in one evaluation run.
+The optional ``rq1-rq2`` and ``rq3`` scopes are convenience subsets for
+development and targeted reruns, not separate scientific campaigns.
 
 No runner, validator, or summarizer maintains a second experimental matrix.
 """
@@ -23,10 +19,10 @@ from typing import Iterable, Literal, Optional, Sequence
 BITS: tuple[int, ...] = (16, 32, 64)
 MERKLE_DEPTHS: tuple[int, ...] = (8, 16, 32)
 DEFAULT_SEED = 20260623
-CAMPAIGNS: tuple[str, ...] = ("core", "extended", "paper")
+SCOPES: tuple[str, ...] = ("all", "rq1-rq2", "rq3")
 
 BindingMode = Literal["none", "shared_witness", "unbound", "tx_tag"]
-ComparisonGroup = Literal["legacy", "linked"]
+ComparisonGroup = Literal["baseline", "commitment_linked"]
 
 
 @dataclass(frozen=True)
@@ -65,7 +61,7 @@ class SeparateProofBaseline:
     bits: Optional[int] = None
     merkle_depth: Optional[int] = None
     role: str = "composition_baseline"
-    comparison_group: ComparisonGroup = "legacy"
+    comparison_group: ComparisonGroup = "baseline"
     binding_mode: BindingMode = "unbound"
 
 
@@ -118,7 +114,7 @@ def _individual_membership() -> list[CircuitExperiment]:
             name="nullifier_correctness_poseidon",
             circuit_file="nullifier_correctness_poseidon.circom",
             family="nullifier_correctness",
-            policy_set="pi_mem",
+            policy_set="pi_null",
             architecture="token",
             role="individual_policy",
         )
@@ -126,8 +122,8 @@ def _individual_membership() -> list[CircuitExperiment]:
     return rows
 
 
-def _legacy_monolithic_compositions() -> list[CircuitExperiment]:
-    """Original monolithic circuits, sound through a shared in-circuit witness."""
+def _baseline_monolithic_compositions() -> list[CircuitExperiment]:
+    """Baseline monolithic circuits, sound through a shared in-circuit witness."""
 
     rows: list[CircuitExperiment] = []
     for bits in BITS:
@@ -142,7 +138,7 @@ def _legacy_monolithic_compositions() -> list[CircuitExperiment]:
                     role="composition",
                     bits=bits,
                     composition_id=f"valid_limit_b{bits}",
-                    comparison_group="legacy",
+                    comparison_group="baseline",
                     binding_mode="shared_witness",
                 ),
                 CircuitExperiment(
@@ -154,7 +150,7 @@ def _legacy_monolithic_compositions() -> list[CircuitExperiment]:
                     role="composition",
                     bits=bits,
                     composition_id=f"account_core_b{bits}",
-                    comparison_group="legacy",
+                    comparison_group="baseline",
                     binding_mode="shared_witness",
                 ),
                 CircuitExperiment(
@@ -166,7 +162,7 @@ def _legacy_monolithic_compositions() -> list[CircuitExperiment]:
                     role="composition",
                     bits=bits,
                     composition_id=f"account_budget_b{bits}",
-                    comparison_group="legacy",
+                    comparison_group="baseline",
                     binding_mode="shared_witness",
                 ),
             ]
@@ -178,21 +174,21 @@ def _legacy_monolithic_compositions() -> list[CircuitExperiment]:
                 name=f"token_policy_bundle_32_depth_{depth}",
                 circuit_file=f"token_policy_bundle_32_depth_{depth}.circom",
                 family="token_policy_bundle",
-                policy_set="pi_mem+pi_valid+pi_budget",
+                policy_set="pi_mem+pi_null+pi_valid+pi_budget",
                 architecture="token",
                 role="composition",
                 bits=32,
                 merkle_depth=depth,
                 composition_id=f"token_bundle_b32_d{depth}",
-                comparison_group="legacy",
+                comparison_group="baseline",
                 binding_mode="shared_witness",
             )
         )
     return rows
 
 
-def _legacy_separate_baselines() -> list[SeparateProofBaseline]:
-    """Historical lower bounds with no cryptographic cross-proof binding."""
+def _unbound_separate_baselines() -> list[SeparateProofBaseline]:
+    """Optimistic lower bounds with no cryptographic cross-proof binding."""
 
     rows: list[SeparateProofBaseline] = []
     for bits in BITS:
@@ -245,7 +241,7 @@ def _legacy_separate_baselines() -> list[SeparateProofBaseline]:
             SeparateProofBaseline(
                 name=f"separate_token_bundle_32_depth_{depth}",
                 family="token_policy_bundle",
-                policy_set="pi_mem+pi_valid+pi_budget",
+                policy_set="pi_mem+pi_null+pi_valid+pi_budget",
                 architecture="token",
                 components=(
                     f"merkle_membership_depth_{depth}",
@@ -261,11 +257,11 @@ def _legacy_separate_baselines() -> list[SeparateProofBaseline]:
     return rows
 
 
-def _linked_circuits() -> list[CircuitExperiment]:
-    """Circuits used by the security-consistent composition campaign."""
+def _commitment_linked_circuits() -> list[CircuitExperiment]:
+    """Circuits used by the security-consistent RQ3 comparison."""
 
     common = {
-        "comparison_group": "linked",
+        "comparison_group": "commitment_linked",
         "binding_mode": "tx_tag",
         "binding_signal": "main.tx_tag",
         "binding_input_key": "tx_tag",
@@ -363,7 +359,7 @@ def _linked_circuits() -> list[CircuitExperiment]:
             name="linked_token_bundle_monolithic_32_depth_16",
             circuit_file="linked_token_bundle_monolithic_32_depth_16.circom",
             family="token_policy_bundle",
-            policy_set="pi_mem+pi_valid+pi_budget",
+            policy_set="pi_mem+pi_null+pi_valid+pi_budget",
             architecture="token",
             role="composition",
             bits=32,
@@ -375,7 +371,7 @@ def _linked_circuits() -> list[CircuitExperiment]:
             name="linked_token_bundle_membership_32_depth_16",
             circuit_file="linked_token_bundle_membership_32_depth_16.circom",
             family="linked_token_bundle_component",
-            policy_set="pi_mem_membership+tx_binding",
+            policy_set="pi_mem+tx_binding",
             architecture="token",
             role="composition_component",
             bits=32,
@@ -387,7 +383,7 @@ def _linked_circuits() -> list[CircuitExperiment]:
             name="linked_token_bundle_nullifier_32_depth_16",
             circuit_file="linked_token_bundle_nullifier_32_depth_16.circom",
             family="linked_token_bundle_component",
-            policy_set="pi_mem_nullifier+tx_binding",
+            policy_set="pi_null+tx_binding",
             architecture="token",
             role="composition_component",
             bits=32,
@@ -422,7 +418,7 @@ def _linked_circuits() -> list[CircuitExperiment]:
     ]
 
 
-def _linked_logical_experiments() -> list[ExperimentLike]:
+def _commitment_linked_logical_experiments() -> list[ExperimentLike]:
     index = circuit_index()
     rows: list[ExperimentLike] = [
         index["linked_valid_limit_monolithic_32"],
@@ -443,7 +439,7 @@ def _linked_logical_experiments() -> list[ExperimentLike]:
                 composition_id="valid_limit_b32",
                 bits=32,
                 role="composition_baseline",
-                comparison_group="linked",
+                comparison_group="commitment_linked",
                 binding_mode="tx_tag",
             ),
             SeparateProofBaseline(
@@ -460,13 +456,13 @@ def _linked_logical_experiments() -> list[ExperimentLike]:
                 composition_id="account_budget_b32",
                 bits=32,
                 role="composition_baseline",
-                comparison_group="linked",
+                comparison_group="commitment_linked",
                 binding_mode="tx_tag",
             ),
             SeparateProofBaseline(
                 name="linked_separate_token_bundle_32_depth_16",
                 family="token_policy_bundle",
-                policy_set="pi_mem+pi_valid+pi_budget",
+                policy_set="pi_mem+pi_null+pi_valid+pi_budget",
                 architecture="token",
                 components=(
                     "linked_token_bundle_membership_32_depth_16",
@@ -478,7 +474,7 @@ def _linked_logical_experiments() -> list[ExperimentLike]:
                 bits=32,
                 merkle_depth=16,
                 role="composition_baseline",
-                comparison_group="linked",
+                comparison_group="commitment_linked",
                 binding_mode="tx_tag",
             ),
         ]
@@ -487,13 +483,13 @@ def _linked_logical_experiments() -> list[ExperimentLike]:
 
 
 def core_circuit_experiments() -> list[CircuitExperiment]:
-    return _individual_arithmetic() + _individual_membership() + _legacy_monolithic_compositions()
+    return _individual_arithmetic() + _individual_membership() + _baseline_monolithic_compositions()
 
 
 def all_circuit_experiments() -> list[CircuitExperiment]:
-    """Return every unique circuit referenced by any campaign."""
+    """Return every unique circuit referenced by the evaluation."""
 
-    return core_circuit_experiments() + _linked_circuits()
+    return core_circuit_experiments() + _commitment_linked_circuits()
 
 
 def circuit_index() -> dict[str, CircuitExperiment]:
@@ -505,34 +501,36 @@ def circuit_index() -> dict[str, CircuitExperiment]:
 
 
 def logical_experiments(
-    campaign: str = "paper", *, include_separate: bool = True
+    scope: str = "all", *, include_separate: bool = True
 ) -> list[ExperimentLike]:
-    """Return the logical experiments for a named campaign profile."""
+    """Return the logical experiments for an evaluation scope."""
 
-    if campaign not in CAMPAIGNS:
-        raise ValueError(f"Unknown campaign {campaign!r}; choose from {CAMPAIGNS}")
+    if scope not in SCOPES:
+        raise ValueError(f"Unknown scope {scope!r}; choose from {SCOPES}")
 
-    core: list[ExperimentLike] = list(core_circuit_experiments())
+    rq1_rq2: list[ExperimentLike] = list(core_circuit_experiments())
     if include_separate:
-        core.extend(_legacy_separate_baselines())
+        rq1_rq2.extend(_unbound_separate_baselines())
 
-    linked = _linked_logical_experiments()
+    commitment_linked = _commitment_linked_logical_experiments()
     if not include_separate:
-        linked = [row for row in linked if isinstance(row, CircuitExperiment)]
+        commitment_linked = [
+            row for row in commitment_linked if isinstance(row, CircuitExperiment)
+        ]
 
-    if campaign == "core":
-        return core
-    if campaign == "extended":
+    if scope == "rq1-rq2":
+        return rq1_rq2
+    if scope == "rq3":
         representative_ids = {
             "valid_limit_b32",
             "account_budget_b32",
             "token_bundle_b32_d16",
         }
-        focused_legacy = [
-            row for row in core if row.composition_id in representative_ids
+        focused_baseline = [
+            row for row in rq1_rq2 if row.composition_id in representative_ids
         ]
-        return focused_legacy + linked
-    return core + linked
+        return focused_baseline + commitment_linked
+    return rq1_rq2 + commitment_linked
 
 
 def filter_experiments(
