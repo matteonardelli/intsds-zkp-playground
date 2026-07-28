@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the IEEE-compatible LaTeX tables used by the paper.
-
-The representative-kernel and RQ3 tables normally come from one complete run.
-The optional archived RQ3 directory is supported only for rebuilding older
-measurements stored across two directories.
-"""
+"""Generate the IEEE-compatible LaTeX tables used by the paper."""
 
 from __future__ import annotations
 
@@ -59,11 +54,6 @@ def parse_args() -> argparse.Namespace:
         "run_dir",
         type=Path,
         help="Complete evaluation result directory",
-    )
-    parser.add_argument(
-        "--rq3-run",
-        type=Path,
-        help="Optional archived RQ3 result directory; defaults to run_dir",
     )
     parser.add_argument(
         "--output-dir",
@@ -386,14 +376,13 @@ def write_binding_overhead_table(path: Path, rows: list[dict[str, str]]) -> None
 def main() -> int:
     args = parse_args()
     run_dir = args.run_dir.resolve()
-    rq3_run = (args.rq3_run or args.run_dir).resolve()
     output_dir = (args.output_dir or args.run_dir).resolve()
     tables_dir = output_dir / "tables"
     tables_dir.mkdir(parents=True, exist_ok=True)
 
     summary = read_csv(run_dir / "summary.csv")
-    composition = read_csv(rq3_run / "composition_comparison.csv")
-    overhead = read_csv(rq3_run / "binding_overhead.csv")
+    composition = read_csv(run_dir / "composition_comparison.csv")
+    overhead = read_csv(run_dir / "binding_overhead.csv")
 
     write_representative_table(
         tables_dir / "table_representative_costs.tex",

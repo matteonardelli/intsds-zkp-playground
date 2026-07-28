@@ -44,11 +44,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", type=Path)
     parser.add_argument(
-        "--rq3-run",
-        type=Path,
-        help="Optional archived RQ3 result directory; defaults to run_dir",
-    )
-    parser.add_argument(
         "--output-dir",
         type=Path,
         help="Output directory; defaults to run_dir",
@@ -66,11 +61,11 @@ def read_frame(path: Path) -> pd.DataFrame:
 
 
 def load_data(
-    run_dir: Path, rq3_run: Path
+    run_dir: Path,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     raw = read_frame(run_dir / "raw_runs.csv")
     summary = read_frame(run_dir / "summary.csv")
-    composition = read_frame(rq3_run / "composition_comparison.csv")
+    composition = read_frame(run_dir / "composition_comparison.csv")
 
     for frame in (raw, summary, composition):
         for column in (
@@ -230,9 +225,8 @@ def plot_composition_ratio(
 def main() -> int:
     args = parse_args()
     run_dir = args.run_dir.resolve()
-    rq3_run = (args.rq3_run or args.run_dir).resolve()
     output_dir = (args.output_dir or args.run_dir).resolve()
-    raw, summary, composition = load_data(run_dir, rq3_run)
+    raw, summary, composition = load_data(run_dir)
     figures_dir = output_dir / "figures"
 
     if raw.empty or summary.empty:

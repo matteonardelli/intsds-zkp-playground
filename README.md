@@ -151,9 +151,8 @@ python3 scripts/build_paper_artifacts.py results/<run-id>
 ```
 
 By default, the tables and figures are written into that same result directory.
-The optional `--rq3-run` argument exists only to recover older archived data in
-which RQ1/RQ2 and RQ3 were stored separately; new reproductions should not use
-it.
+All required raw and derived measurements must be present in that single run
+directory.
 
 See [`scripts/README.md`](scripts/README.md) for the output schema and metric
 definitions.

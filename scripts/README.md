@@ -118,5 +118,5 @@ For any complete result directory:
 python3 scripts/build_paper_artifacts.py results/<run-id>
 ```
 
-The output defaults to the same directory. `--rq3-run` is retained only for
-post-processing older archived measurements stored in two directories.
+The output defaults to the same directory. The command expects all RQ1--RQ3
+measurements and derived CSV files to belong to that single evaluation run.

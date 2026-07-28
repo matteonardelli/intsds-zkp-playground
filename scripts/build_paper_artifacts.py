@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate all paper-facing tables and figures from evaluation results.
-
-For a new complete run, pass its single result directory. The optional
-``--rq3-run`` argument exists only to rebuild artifacts from older archived
-measurements where RQ1/RQ2 and RQ3 were stored in different directories.
-"""
+"""Regenerate all paper-facing tables and figures from one evaluation run."""
 
 from __future__ import annotations
 
@@ -16,11 +11,10 @@ from pathlib import Path
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("run_dir", type=Path)
     parser.add_argument(
-        "--rq3-run",
+        "run_dir",
         type=Path,
-        help="Optional archived run containing RQ3 variants; defaults to run_dir",
+        help="Complete evaluation result directory",
     )
     parser.add_argument(
         "--output-dir",
@@ -47,20 +41,16 @@ def main() -> int:
     args = parse_args()
     script_dir = Path(__file__).resolve().parent
     run_dir = args.run_dir.resolve()
-    rq3_run = (args.rq3_run or args.run_dir).resolve()
     output_dir = (args.output_dir or args.run_dir).resolve()
 
     if not args.no_refresh_summaries:
-        for source_dir in dict.fromkeys((run_dir, rq3_run)):
-            run([sys.executable, str(script_dir / "summarize_results.py"), str(source_dir)])
+        run([sys.executable, str(script_dir / "summarize_results.py"), str(run_dir)])
 
     run(
         [
             sys.executable,
             str(script_dir / "build_tables.py"),
             str(run_dir),
-            "--rq3-run",
-            str(rq3_run),
             "--output-dir",
             str(output_dir),
         ]
@@ -70,8 +60,6 @@ def main() -> int:
             sys.executable,
             str(script_dir / "plot_results.py"),
             str(run_dir),
-            "--rq3-run",
-            str(rq3_run),
             "--output-dir",
             str(output_dir),
             "--format",

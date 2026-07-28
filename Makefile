@@ -1,6 +1,5 @@
 PYTHON ?= python3
 RUN_DIR ?=
-RQ3_RUN ?=$(RUN_DIR)
 OUTPUT_DIR ?=$(RUN_DIR)
 
 .PHONY: test validate-paper run-paper reproduce-paper paper-artifacts
@@ -21,5 +20,4 @@ paper-artifacts:
 	@test -n "$(RUN_DIR)" || (echo "Set RUN_DIR=results/<run-id>" && exit 2)
 	$(PYTHON) scripts/build_paper_artifacts.py \
 		$(RUN_DIR) \
-		--rq3-run $(RQ3_RUN) \
 		--output-dir $(OUTPUT_DIR)
