@@ -1,0 +1,11 @@
+{
+  "sender_balance": "1073741816",
+  "receiver_balance": "402653181",
+  "spent_window": "268435454",
+  "spent_private": "134217727",
+  "amount": "134217727",
+  "sender_new": "939524089",
+  "receiver_new": "536870908",
+  "window_limit": "671088635",
+  "anonymity_budget": "536870908"
+}

@@ -1,0 +1,35 @@
+\begin{table*}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.2pt}
+\renewcommand{\arraystretch}{1.05}
+\caption{Overhead introduced by transaction-commitment binding. Each entry is
+the ratio between a commitment-linked configuration and its corresponding
+baseline variant; values above one indicate overhead. The monolithic baseline
+uses a shared witness without an explicit transaction commitment, whereas the
+separate baseline is unbound and does not provide equivalent cross-proof
+consistency.}
+\label{tab:binding-overhead}
+\begin{tabular}{@{}llrrrrrrr@{}}
+\toprule
+\textbf{Composition} &
+\textbf{Execution} &
+\textbf{Constraints} &
+\textbf{Witness} &
+\textbf{Prove} &
+\textbf{Verify} &
+\textbf{Online} &
+\textbf{Proof size} &
+\textbf{Public size} \\
+\midrule
+Validity $\wedge$ limit, $k=32$ & Monolithic & 4.979 & 1.868 & 1.126 & 0.990 & 1.090 & 1.001 & 6.125 \\
+Validity $\wedge$ limit, $k=32$ & Separate & 8.007 & 1.965 & 1.143 & 1.007 & 1.104 & 1.000 & 10.316 \\
+\addlinespace[1pt]
+Account core $+$ budget, $k=32$ & Monolithic & 3.946 & 2.722 & 1.138 & 1.005 & 1.144 & 1.000 & 3.700 \\
+Account core $+$ budget, $k=32$ & Separate & 10.264 & 2.848 & 1.148 & 1.002 & 1.137 & 0.999 & 11.684 \\
+\addlinespace[1pt]
+Token policy bundle, $d=16$ & Monolithic & 1.148 & 1.386 & 1.021 & 1.017 & 1.038 & 1.000 & 1.315 \\
+Token policy bundle, $d=16$ & Separate & 1.694 & 2.109 & 1.111 & 1.002 & 1.102 & 1.000 & 5.124 \\
+\bottomrule
+\end{tabular}
+\end{table*}

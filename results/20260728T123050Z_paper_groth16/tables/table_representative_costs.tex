@@ -1,0 +1,34 @@
+\begin{table*}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.0pt}
+\renewcommand{\arraystretch}{1.05}
+\caption{Representative Groth16 costs for 32-bit arithmetic configurations and
+16-level membership configurations. Times are in milliseconds; artifact sizes
+are medians of the serialized SnarkJS JSON files.}
+\label{tab:representative-costs}
+\begin{tabular}{@{}lrrrrrrrr@{}}
+\toprule
+\textbf{Policy configuration} &
+\textbf{Constraints} &
+\textbf{Witness med.} &
+\textbf{Prove med.} &
+\textbf{Prove p95} &
+\textbf{Verify med.} &
+\textbf{Online med.} &
+\textbf{Proof (B)} &
+\textbf{Public (B)} \\
+\midrule
+Local validity ($\pi_{\mathsf{valid}}$) & 104 & 20.53 & 290.42 & 314.60 & 256.18 & 565.45 & 805 & 3 \\
+Operating limit ($\pi_{\mathsf{limit}}$) & 172 & 20.87 & 294.97 & 320.75 & 259.87 & 575.80 & 805 & 16 \\
+Privacy budget ($\pi_{\mathsf{budget}}$) & 172 & 21.13 & 297.30 & 327.08 & 257.18 & 581.21 & 805 & 16 \\
+State transition ($\pi_{\mathsf{trans}}$) & 169 & 21.14 & 292.79 & 315.79 & 252.03 & 573.01 & 805 & 3 \\
+Merkle membership ($\pi_{\mathsf{mem}}$) & 8,320 & 40.80 & 527.22 & 559.27 & 260.54 & 830.09 & 805 & 84 \\
+Nullifier derivation ($\pi_{\mathsf{null}}$) & 517 & 33.37 & 321.13 & 347.22 & 271.10 & 623.76 & 804 & 164 \\
+Validity $\wedge$ limit & 243 & 21.24 & 297.96 & 330.20 & 260.29 & 580.32 & 805 & 16 \\
+Account policy core & 346 & 22.02 & 300.46 & 340.08 & 262.55 & 583.67 & 806 & 16 \\
+Account core $+$ budget & 485 & 21.70 & 302.93 & 332.04 & 259.93 & 581.65 & 805 & 30 \\
+Token policy bundle & 9,685 & 45.67 & 547.80 & 585.06 & 260.51 & 851.06 & 805 & 260 \\
+\bottomrule
+\end{tabular}
+\end{table*}

@@ -1,0 +1,26 @@
+{
+  "seed": "20260623",
+  "generated_at_utc": "2026-07-28T12:30:19.804Z",
+  "field_prime": "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+  "bits": [
+    16,
+    32,
+    64
+  ],
+  "merkle_depths": [
+    8,
+    16,
+    32
+  ],
+  "linked_configurations": [
+    "valid_limit_b32",
+    "account_budget_b32",
+    "token_bundle_b32_d16"
+  ],
+  "binding_domains": {
+    "valid_limit": "1101",
+    "account_budget": "1201",
+    "token_bundle": "1301"
+  },
+  "note": "Deterministic valid inputs for the complete paper evaluation."
+}

@@ -1,0 +1,27 @@
+\begin{table*}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4.0pt}
+\renewcommand{\arraystretch}{1.05}
+\caption{Monolithic-to-separate cost ratios for commitment-linked policy
+compositions. Values below one favor monolithic enforcement. Time and size
+columns use medians; proof and public-output sizes are aggregate serialized
+SnarkJS JSON sizes.}
+\label{tab:composition-ratios}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+\textbf{Composition} &
+\textbf{Constraints} &
+\textbf{Witness} &
+\textbf{Prove} &
+\textbf{Verify} &
+\textbf{Online} &
+\textbf{Proof size} &
+\textbf{Public size} \\
+\midrule
+Validity $\wedge$ limit, $k=32$ & 0.548 & 0.493 & 0.499 & 0.493 & 0.496 & 0.501 & 0.500 \\
+Account core $+$ budget, $k=32$ & 0.302 & 0.254 & 0.254 & 0.249 & 0.252 & 0.250 & 0.250 \\
+Token policy bundle, $d=16$ & 0.720 & 0.267 & 0.354 & 0.255 & 0.310 & 0.250 & 0.250 \\
+\bottomrule
+\end{tabular}
+\end{table*}
