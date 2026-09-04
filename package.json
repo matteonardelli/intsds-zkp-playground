@@ -1,7 +1,7 @@
 {
   "name": "zkp-policy-model-benchmarks",
   "private": true,
-  "version": "0.4.0",
+  "version": "1.0.0",
   "description": "Circom policy kernels aligned with a policy model for privacy-preserving payment systems",
   "dependencies": {
     "circomlib": "^2.0.5",
